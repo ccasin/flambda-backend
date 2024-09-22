@@ -880,6 +880,8 @@ module With_subkind = struct
     | Parrayval (Punboxedintarray Pint32) -> unboxed_int32_array
     | Parrayval (Punboxedintarray Pint64) -> unboxed_int64_array
     | Parrayval (Punboxedintarray Pnativeint) -> unboxed_nativeint_array
+    | Parrayval (Pgcscannableproductarray _ | Pgcignorableproductarray _) ->
+      Misc.fatal_errorf "Flambda_kind.from_lambda_value_kind: unimplemented"
 
   let from_lambda_values_and_unboxed_numbers_only (layout : Lambda.layout) =
     match layout with

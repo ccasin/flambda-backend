@@ -133,6 +133,9 @@ let convert_array_kind (kind : L.array_kind) : converted_array_kind =
   | Punboxedintarray Pint32 -> Array_kind Naked_int32s
   | Punboxedintarray Pint64 -> Array_kind Naked_int64s
   | Punboxedintarray Pnativeint -> Array_kind Naked_nativeints
+  | Pgcscannableproductarray _ | Pgcignorableproductarray _ ->
+    Misc.fatal_error
+      "Lambda_to_flambda_primitives.convert_array_kind: unimplemented"
 
 let convert_array_kind_for_length kind : P.Array_kind_for_length.t =
   match convert_array_kind kind with
@@ -175,6 +178,9 @@ let convert_array_ref_kind (kind : L.array_ref_kind) : converted_array_ref_kind
   | Punboxedintarray_ref Pint32 -> Array_ref_kind Naked_int32s
   | Punboxedintarray_ref Pint64 -> Array_ref_kind Naked_int64s
   | Punboxedintarray_ref Pnativeint -> Array_ref_kind Naked_nativeints
+  | Pgcscannableproductarray_ref _ | Pgcignorableproductarray_ref _ ->
+    Misc.fatal_error
+      "Lambda_to_flambda_primitives.convert_array_ref_kind: unimplemented"
 
 let convert_array_ref_kind_for_length array_ref_kind : P.Array_kind_for_length.t
     =
@@ -234,6 +240,9 @@ let convert_array_set_kind (kind : L.array_set_kind) : converted_array_set_kind
   | Punboxedintarray_set Pint32 -> Array_set_kind Naked_int32s
   | Punboxedintarray_set Pint64 -> Array_set_kind Naked_int64s
   | Punboxedintarray_set Pnativeint -> Array_set_kind Naked_nativeints
+  | Pgcscannableproductarray_set _ | Pgcignorableproductarray_set _ ->
+    Misc.fatal_error
+      "Lambda_to_flambda_primitives.convert_array_set_kind: unimplemented"
 
 let convert_array_set_kind_for_length array_set_kind : P.Array_kind_for_length.t
     =
@@ -270,6 +279,10 @@ let convert_array_kind_to_duplicate_array_kind (kind : L.array_kind) :
     Duplicate_array_kind (Naked_int64s { length = None })
   | Punboxedintarray Pnativeint ->
     Duplicate_array_kind (Naked_nativeints { length = None })
+  | Pgcscannableproductarray _ | Pgcignorableproductarray _ ->
+    Misc.fatal_error
+      "Lambda_to_flambda_primitives.convert_array_kind_to_duplicate_array_kind\
+       : unimplemented"
 
 let convert_field_read_semantics (sem : L.field_read_semantics) : Mutability.t =
   match sem with Reads_agree -> Immutable | Reads_vary -> Mutable
@@ -1048,6 +1061,9 @@ let convert_lprim ~big_endian (prim : L.primitive) (args : Simple.t list list)
         | Punboxedintarray (Pint32 | Pint64 | Pnativeint) ->
           args
         | Pfloatarray -> List.map unbox_float args
+        | Pgcscannableproductarray _ | Pgcignorableproductarray _ ->
+          Misc.fatal_error
+            "Lambda_to_flambda_primitives.convert_lprim: unimplemented"
       in
       [Variadic (Make_array (array_kind, mutability, mode), args)]
     | Float_array_opt_dynamic -> (
@@ -1068,6 +1084,8 @@ let convert_lprim ~big_endian (prim : L.primitive) (args : Simple.t list list)
                   List.map unbox_float args ),
               Variadic (Make_array (Values, mutability, mode), args),
               [K.With_subkind.any_value] ) ]))
+  | Pmake_unboxed_tuple_vect (_lambda_array_kind, _mode), _ ->
+    Misc.fatal_error "Lambda_to_flambda_primitives.convert_lprim: unimplemented"
   | Popaque layout, [arg] -> opaque layout arg ~middle_end_only:false
   | Pobj_magic layout, [arg] -> opaque layout arg ~middle_end_only:true
   | Pduprecord (repr, num_fields), [[arg]] ->
@@ -1990,13 +2008,15 @@ let convert_lprim ~big_endian (prim : L.primitive) (args : Simple.t list list)
       | Parrayrefu
           ( ( Pgenarray_ref _ | Paddrarray_ref | Pintarray_ref
             | Pfloatarray_ref _ | Punboxedfloatarray_ref _
-            | Punboxedintarray_ref _ ),
+            | Punboxedintarray_ref _
+            | Pgcscannableproductarray_ref _ | Pgcignorableproductarray_ref _ ),
             _,
             _ )
       | Parrayrefs
           ( ( Pgenarray_ref _ | Paddrarray_ref | Pintarray_ref
             | Pfloatarray_ref _ | Punboxedfloatarray_ref _
-            | Punboxedintarray_ref _ ),
+            | Punboxedintarray_ref _
+            | Pgcscannableproductarray_ref _ | Pgcignorableproductarray_ref _ ),
             _,
             _ )
       | Pcompare_ints | Pcompare_floats _ | Pcompare_bints _ | Patomic_exchange
@@ -2014,12 +2034,14 @@ let convert_lprim ~big_endian (prim : L.primitive) (args : Simple.t list list)
       | Parraysetu
           ( ( Pgenarray_set _ | Paddrarray_set _ | Pintarray_set
             | Pfloatarray_set | Punboxedfloatarray_set _
-            | Punboxedintarray_set _ ),
+            | Punboxedintarray_set _
+            | Pgcscannableproductarray_set _ | Pgcignorableproductarray_set _ ),
             _ )
       | Parraysets
           ( ( Pgenarray_set _ | Paddrarray_set _ | Pintarray_set
             | Pfloatarray_set | Punboxedfloatarray_set _
-            | Punboxedintarray_set _ ),
+            | Punboxedintarray_set _
+            | Pgcscannableproductarray_set _ | Pgcignorableproductarray_set _ ),
             _ )
       | Pbytes_set_16 _ | Pbytes_set_32 _ | Pbytes_set_f32 _ | Pbytes_set_64 _
       | Pbytes_set_128 _ | Pbigstring_set_16 _ | Pbigstring_set_32 _

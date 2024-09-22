@@ -30,7 +30,7 @@ type error =
   | Not_a_sort of type_expr * Jkind.Violation.t
   | Unsupported_sort of Jkind.Sort.Const.t
   | Unsupported_product_in_lazy of Jkind.Sort.Const.t
-  | Unsupported_product_in_array of Jkind.Sort.Const.t
+  | Mixed_product_array of Jkind.Sort.Const.t
 
 exception Error of Location.t * error
 
@@ -119,12 +119,9 @@ type classification =
   | Unboxed_float of unboxed_float
   | Unboxed_int of unboxed_integer
   | Lazy
-  | Addr  (* anything except a float or a lazy *)
+  | Addr  (* any value except a float or a lazy *)
   | Any
   | Product of Jkind.Sort.Const.t list
-  (* CR layouts v7.1: This [Product] case is always an error for now, but soon
-     we will support unboxed products in arrays and it will only sometimes be an
-     error. *)
 
 (* Classify a ty into a [classification]. Looks through synonyms, using [scrape_ty].
    Returning [Any] is safe, though may skip some optimizations. *)
@@ -174,27 +171,62 @@ let classify env loc ty sort : classification =
     raise (Error (loc, Unsupported_sort c))
   | Product c -> Product c
 
+let rec scannable_product_array_kind loc sorts =
+  List.map (sort_to_scannable_product_element_kind loc) sorts
+
+and sort_to_scannable_product_element_kind loc (s : Jkind.Sort.Const.t) =
+  (* Unfortunate: this never returns `Pint_scannable`.  Doing so would require
+     this to traverse the type, rather than just the kind, or to add product
+     kinds. *)
+  match s with
+  | Base Value -> Paddr_scannable
+  | Base (Float64 | Float32 | Bits32 | Bits64 | Word) as c ->
+    raise (Error (loc, Mixed_product_array c))
+  | Base Void as c ->
+    raise (Error (loc, Unsupported_sort c))
+  | Product sorts -> Pproduct_scannable (scannable_product_array_kind loc sorts)
+
+let rec ignorable_product_array_kind loc sorts =
+  List.map (sort_to_ignorable_product_element_kind loc) sorts
+
+and sort_to_ignorable_product_element_kind loc (s : Jkind.Sort.Const.t) =
+  match s with
+  | Base Value -> Pint_ignorable
+  | Base Float64 -> Punboxedfloat_ignorable Pfloat64
+  | Base Float32 -> Punboxedfloat_ignorable Pfloat32
+  | Base Bits32 -> Punboxedint_ignorable Pint32
+  | Base Bits64 -> Punboxedint_ignorable Pint64
+  | Base Word -> Punboxedint_ignorable Pnativeint
+  | Base Void as c ->
+    raise (Error (loc, Unsupported_sort c))
+  | Product sorts -> Pproduct_ignorable (ignorable_product_array_kind loc sorts)
+
+let array_kind_of_elt ~elt_sort env loc ty =
+  let elt_sort =
+    match elt_sort with
+    | Some s -> s
+    | None ->
+      type_legacy_sort ~why:Array_element env loc ty
+  in
+  match classify env loc ty elt_sort with
+  | Any -> if Config.flat_float_array then Pgenarray else Paddrarray
+  | Float -> if Config.flat_float_array then Pfloatarray else Paddrarray
+  | Addr | Lazy -> Paddrarray
+  | Int -> Pintarray
+  | Unboxed_float f -> Punboxedfloatarray f
+  | Unboxed_int i -> Punboxedintarray i
+  | Product sorts ->
+    (* XXX need scrape_ty elt_ty? *)
+    if is_always_gc_ignorable env ty then
+      Pgcignorableproductarray (ignorable_product_array_kind loc sorts)
+    else
+      Pgcscannableproductarray (scannable_product_array_kind loc sorts)
+
 let array_type_kind ~elt_sort env loc ty =
   match scrape_poly env ty with
   | Tconstr(p, [elt_ty], _)
     when Path.same p Predef.path_array || Path.same p Predef.path_iarray ->
-      let elt_sort =
-        match elt_sort with
-        | Some s -> s
-        | None ->
-          type_legacy_sort ~why:Array_element env loc elt_ty
-      in
-      begin match classify env loc elt_ty elt_sort with
-      | Any -> if Config.flat_float_array then Pgenarray else Paddrarray
-      | Float -> if Config.flat_float_array then Pfloatarray else Paddrarray
-      | Addr | Lazy -> Paddrarray
-      | Int -> Pintarray
-      | Unboxed_float f -> Punboxedfloatarray f
-      | Unboxed_int i -> Punboxedintarray i
-      | Product cs ->
-        let kind = Jkind.Sort.Const.Product cs in
-        raise (Error (loc, Unsupported_product_in_array kind))
-      end
+      array_kind_of_elt ~elt_sort env loc elt_ty
   | Tconstr(p, [], _) when Path.same p Predef.path_floatarray ->
       Pfloatarray
   | _ ->
@@ -938,11 +970,12 @@ let report_error ppf = function
         "Product layout %a detected in [lazy] in [Typeopt.Layout]@ \
          Please report this error to the Jane Street compilers team."
         Jkind.Sort.Const.format const
-  | Unsupported_product_in_array const ->
-    fprintf ppf
-      "Unboxed products are not yet supported with array primitives.@ \
-       Here, layout %a was used."
-      Jkind.Sort.Const.format const
+  | Mixed_product_array const ->
+      fprintf ppf
+        "Unboxed product array elements must be external or contain all gc \
+         scannable types.@ This product is not external but contains an \
+         element of sort %a."
+        Jkind.Sort.Const.format const
 
 let () =
   Location.register_error_of_exn

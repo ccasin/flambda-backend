@@ -781,11 +781,7 @@ type t4 = #(string * #(float# * bool option)) array
 
 let _ = [| #(1,2) |]
 [%%expect{|
-Line 1, characters 8-20:
-1 | let _ = [| #(1,2) |]
-            ^^^^^^^^^^^^
-Error: Unboxed products are not yet supported with array primitives.
-       Here, layout value & value was used.
+- : #(int * int) array = [|#(1, 2)|]
 |}]
 
 let _ = Array.init 3 (fun _ -> #(1,2))
@@ -827,11 +823,7 @@ let f x : #(int * int) = array_get x 3
 [%%expect{|
 external array_get : ('a : any). 'a array -> int -> 'a = "%array_safe_get"
   [@@layout_poly]
-Line 3, characters 25-38:
-3 | let f x : #(int * int) = array_get x 3
-                             ^^^^^^^^^^^^^
-Error: Unboxed products are not yet supported with array primitives.
-       Here, layout value & value was used.
+val f : #(int * int) array -> #(int * int) = <fun>
 |}]
 
 external[@layout_poly] array_set : ('a : any) . 'a array -> int -> 'a -> unit =
@@ -840,11 +832,7 @@ let f x = array_set x 3 #(1,2)
 [%%expect{|
 external array_set : ('a : any). 'a array -> int -> 'a -> unit
   = "%array_safe_set" [@@layout_poly]
-Line 3, characters 10-30:
-3 | let f x = array_set x 3 #(1,2)
-              ^^^^^^^^^^^^^^^^^^^^
-Error: Unboxed products are not yet supported with array primitives.
-       Here, layout value & value was used.
+val f : #(int * int) array -> unit = <fun>
 |}]
 
 
