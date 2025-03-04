@@ -67,5 +67,5 @@ run {| fun x y z -> (function w -> x y z w) |};;
 run {| let foo : 'a. 'a -> 'a = fun x -> x in foo |};;
 
 [%%expect{|
-- : string = "let (foo : ('a : value) . 'a -> 'a) = fun x -> x in foo"
+- : string = "let foo : ('a : value) . 'a -> 'a = fun x -> x in foo"
 |}]
