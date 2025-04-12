@@ -529,8 +529,9 @@ and add_sig_item (bv, m) item =
   | Psig_extension (e, _) ->
       handle_extension e;
       (bv, m)
-  | Psig_kind_abbrev (_, jkind) ->
-      add_jkind bv jkind; (bv, m)
+  | Psig_kind (_, jkind) ->
+      Option.iter (add_jkind bv) jkind;
+      (bv, m)
 
 and open_description bv od =
   let Node(s, m) = add_module_alias bv od.popen_expr in
@@ -688,8 +689,9 @@ and add_struct_item (bv, m) item : _ String.Map.t * _ String.Map.t =
   | Pstr_extension (e, _) ->
       handle_extension e;
       (bv, m)
-  | Pstr_kind_abbrev (_name, jkind) ->
-      add_jkind bv jkind; (bv, m)
+  | Pstr_kind (_name, jkind) ->
+      Option.iter (add_jkind bv) jkind;
+      (bv, m)
 
 and add_use_file bv top_phrs =
   ignore (List.fold_left add_top_phrase bv top_phrs)

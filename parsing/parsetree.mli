@@ -1094,8 +1094,8 @@ and signature_item_desc =
       (** [class type ct1 = ... and ... and ctn = ...] *)
   | Psig_attribute of attribute  (** [[\@\@\@id]] *)
   | Psig_extension of extension * attributes  (** [[%%id]] *)
-  | Psig_kind_abbrev of string loc * jkind_annotation
-      (** [kind_abbrev_ name = k] *)
+  | Psig_kind of string loc * jkind_annotation option
+      (** [kind_ name] or [kind_ name = k] *)
 
 and module_declaration =
     {
@@ -1259,8 +1259,8 @@ and structure_item_desc =
   | Pstr_include of include_declaration  (** [include ME] *)
   | Pstr_attribute of attribute  (** [[\@\@\@id]] *)
   | Pstr_extension of extension * attributes  (** [[%%id]] *)
-  | Pstr_kind_abbrev of string loc * jkind_annotation
-      (** [kind_abbrev_ name = k] *)
+  | Pstr_kind of string loc * jkind_annotation option
+      (** [kind_ name] or [kind_ name = k] *)
 
 and value_constraint =
   | Pvc_constraint of {

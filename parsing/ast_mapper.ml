@@ -392,11 +392,11 @@ module MT = struct
         let attrs = sub.attributes sub attrs in
         extension ~loc ~attrs (sub.extension sub x)
     | Psig_attribute x -> attribute ~loc (sub.attribute sub x)
-    | Psig_kind_abbrev (name, jkind) ->
-        kind_abbrev
+    | Psig_kind (name, jkind) ->
+        kind
           ~loc
           (map_loc sub name)
-          (sub.jkind_annotation sub jkind)
+          (Option.map (sub.jkind_annotation sub) jkind)
 end
 
 
@@ -450,11 +450,11 @@ module M = struct
         let attrs = sub.attributes sub attrs in
         extension ~loc ~attrs (sub.extension sub x)
     | Pstr_attribute x -> attribute ~loc (sub.attribute sub x)
-    | Pstr_kind_abbrev (name, jkind) ->
-        kind_abbrev
+    | Pstr_kind (name, jkind) ->
+        kind
           ~loc
           (map_loc sub name)
-          (sub.jkind_annotation sub jkind)
+          (Option.map (sub.jkind_annotation sub) jkind)
 end
 
 module E = struct

@@ -333,9 +333,9 @@ module MT = struct
         sub.attributes sub attrs;
         sub.extension sub x
     | Psig_attribute x -> sub.attribute sub x
-    | Psig_kind_abbrev (name, jkind) ->
+    | Psig_kind (name, jkind) ->
         iter_loc sub name;
-        sub.jkind_annotation sub jkind
+        Option.iter (sub.jkind_annotation sub) jkind
 end
 
 
@@ -386,9 +386,9 @@ module M = struct
     | Pstr_extension (x, attrs) ->
         sub.attributes sub attrs; sub.extension sub x
     | Pstr_attribute x -> sub.attribute sub x
-    | Pstr_kind_abbrev (name, jkind) ->
+    | Pstr_kind (name, jkind) ->
         iter_loc sub name;
-        sub.jkind_annotation sub jkind
+        Option.iter (sub.jkind_annotation sub) jkind
 end
 
 module E = struct

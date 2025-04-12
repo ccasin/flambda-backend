@@ -929,9 +929,9 @@ and signature_item i ppf x =
       payload i ppf arg
   | Psig_attribute a ->
       attribute i ppf "Psig_attribute" a
-  | Psig_kind_abbrev (name, jkind) ->
-      line i ppf "Psig_kind_abbrev \"%s\"\n" name.txt;
-      jkind_annotation i ppf jkind
+  | Psig_kind (name, jkind) ->
+      line i ppf "Psig_kind \"%s\"\n" name.txt;
+      option i jkind_annotation ppf jkind
 
 and modtype_declaration i ppf = function
   | None -> line i ppf "#abstract"
@@ -1065,9 +1065,9 @@ and structure_item i ppf x =
       payload i ppf arg
   | Pstr_attribute a ->
       attribute i ppf "Pstr_attribute" a
-  | Pstr_kind_abbrev (name, jkind) ->
-      line i ppf "Pstr_kind_abbrev \"%s\"\n" name.txt;
-      jkind_annotation i ppf jkind
+  | Pstr_kind (name, jkind) ->
+      line i ppf "Pstr_kind \"%s\"\n" name.txt;
+      option i jkind_annotation ppf jkind
 
 and module_declaration i ppf pmd =
   str_opt_loc i ppf pmd.pmd_name;

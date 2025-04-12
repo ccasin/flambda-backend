@@ -994,7 +994,7 @@ let maybe_pmod_constraint mode expr =
 %token INITIALIZER            "initializer"
 %token <string * char option> INT      "42"  (* just an example *)
 %token <string * char option> HASH_INT "#42l" (* just an example *)
-%token KIND_ABBREV            "kind_abbrev_"
+%token KIND                   "kind_"
 %token KIND_OF                "kind_of_"
 %token <string> LABEL         "~label:" (* just an example *)
 %token LAZY                   "lazy"
@@ -1763,9 +1763,9 @@ structure_item:
           Pstr_extension ($1, add_docs_attrs docs $2) }
     | floating_attribute
         { Pstr_attribute $1 }
-    | kind_abbreviation_decl
+    | kind_decl
         { let name, jkind = $1 in
-          Pstr_kind_abbrev (name, jkind)
+          Pstr_kind (name, jkind)
         })
   | wrap_mkstr_ext(
       primitive_declaration
@@ -2052,9 +2052,9 @@ signature_item:
   | mksig(
       floating_attribute
         { Psig_attribute $1 }
-     | kind_abbreviation_decl
+     | kind_decl
         { let name, jkind = $1 in
-          Psig_kind_abbrev (name, jkind)
+          Psig_kind (name, jkind)
         }
     )
     { $1 }
@@ -3989,10 +3989,11 @@ jkind_constraint:
   COLON jkind_annotation { $2 }
 ;
 
-kind_abbreviation_decl:
-  KIND_ABBREV abbrev=mkrhs(LIDENT) EQUAL jkind=jkind_annotation {
-    (abbrev, jkind)
-  }
+kind_decl:
+  | KIND name=mkrhs(LIDENT) EQUAL jkind=jkind_annotation
+      { (name, Some jkind) }
+  | KIND name=mkrhs(LIDENT)
+      { (name, None) }
 ;
 
 %inline type_param_with_jkind:

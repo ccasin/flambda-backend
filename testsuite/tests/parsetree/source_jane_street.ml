@@ -1256,26 +1256,28 @@ type 'a contended_with_int : immutable_data with 'a @@ contended
 module _ : sig
   type 'a gel : kind_of_ 'a mod global
   type 'a t : _
-  kind_abbrev_ immediate = value mod global unique many sync uncontended
-  kind_abbrev_ immutable_data = value mod sync uncontended many
-  kind_abbrev_ immutable = value mod uncontended
-  kind_abbrev_ data = value mod sync many
+  kind_ immediate = value mod global unique many sync uncontended
+  kind_ immutable_data = value mod sync uncontended many
+  kind_ immutable = value mod uncontended
+  kind_ data = value mod sync many
+  kind_ abstract
 end = struct
   type 'a gel : kind_of_ 'a mod global
   type 'a t : _
-  kind_abbrev_ immediate = value mod global unique many sync uncontended
-  kind_abbrev_ immutable_data = value mod sync uncontended many
-  kind_abbrev_ immutable = value mod uncontended
-  kind_abbrev_ data = value mod sync many
+  kind_ immediate = value mod global unique many sync uncontended
+  kind_ immutable_data = value mod sync uncontended many
+  kind_ immutable = value mod uncontended
+  kind_ data = value mod sync many
+  kind_ abstract
 end
 
 (* CR layouts v2.8: Expect this output to change once modal kinds are
    supported. *)
 
 [%%expect{|
-Line 9, characters 16-27:
-9 |   type 'a gel : kind_of_ 'a mod global
-                    ^^^^^^^^^^^
+Line 10, characters 16-27:
+10 |   type 'a gel : kind_of_ 'a mod global
+                     ^^^^^^^^^^^
 Error: Unimplemented kind syntax
 |}]
 

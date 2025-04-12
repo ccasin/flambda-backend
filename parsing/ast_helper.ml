@@ -320,7 +320,7 @@ module Sig = struct
   let class_ ?loc a = mk ?loc (Psig_class a)
   let class_type ?loc a = mk ?loc (Psig_class_type a)
   let extension ?loc ?(attrs = []) a = mk ?loc (Psig_extension (a, attrs))
-  let kind_abbrev ?loc a b = mk ?loc (Psig_kind_abbrev (a, b))
+  let kind ?loc a b = mk ?loc (Psig_kind (a, b))
   let attribute ?loc a = mk ?loc (Psig_attribute a)
   let text txt =
     let f_txt = List.filter (fun ds -> docstring_body ds <> "") txt in
@@ -351,7 +351,7 @@ module Str = struct
   let class_type ?loc a = mk ?loc (Pstr_class_type a)
   let include_ ?loc a = mk ?loc (Pstr_include a)
   let extension ?loc ?(attrs = []) a = mk ?loc (Pstr_extension (a, attrs))
-  let kind_abbrev ?loc a b = mk ?loc (Pstr_kind_abbrev (a, b))
+  let kind ?loc a b = mk ?loc (Pstr_kind (a, b))
   let attribute ?loc a = mk ?loc (Pstr_attribute a)
   let text txt =
     let f_txt = List.filter (fun ds -> docstring_body ds <> "") txt in
