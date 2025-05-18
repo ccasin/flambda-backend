@@ -2026,19 +2026,21 @@ let rec update_decl_jkind env dpath decl =
      variables in the original decl's jkind, which might be shared with the jkinds of
      other types in a (maybe mutually recursive) type declaration. See Note [Default
      jkinds in transl_declaration]) *)
-  match
-    Jkind.Layout.sub new_decl.type_jkind.jkind.layout decl.type_jkind.jkind.layout
-  with
-  | Not_le reason ->
-    let jkind_of_type ty = Some (Ctype.type_jkind_purely env ty) in
-    raise (Error (
-      decl.type_loc,
-      Jkind_mismatch_of_path (
-        dpath,
-        Jkind.Violation.of_ ~jkind_of_type (
-          Not_a_subjkind (
-            new_decl.type_jkind, decl.type_jkind, Nonempty_list.to_list reason)))))
-  | Less | Equal -> new_decl
+  match new_decl.type_jkind.jkind.base, decl.type_jkind.jkind.base with
+  | Kconstr _, _ | _, Kconstr _ -> assert false (* XXX abstract kinds *)
+  | Layout l1, Layout l2 -> begin
+    match Jkind.Layout.sub l1 l2 with
+    | Not_le reason ->
+      let jkind_of_type ty = Some (Ctype.type_jkind_purely env ty) in
+      raise (Error (
+        decl.type_loc,
+        Jkind_mismatch_of_path (
+          dpath,
+          Jkind.Violation.of_ ~jkind_of_type (
+            Not_a_subjkind (
+              new_decl.type_jkind, decl.type_jkind, Nonempty_list.to_list reason)))))
+    | Less | Equal -> new_decl
+  end
 
 let update_decls_jkind_reason env decls =
   List.map

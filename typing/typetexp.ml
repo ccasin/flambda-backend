@@ -1532,9 +1532,9 @@ let report_error env ppf =
         (Jkind.format_history ~intro:(
           dprintf "But it was inferred to have %t"
             (fun ppf -> let desc = Jkind.get inferred_jkind in
-              match desc.layout with
-              | Sort (Var _) -> fprintf ppf "a representable kind"
-              | Sort (Base _) | Any | Product _ ->
+              match desc.base with
+              | Layout (Sort (Var _)) -> fprintf ppf "a representable kind"
+              | Layout (Sort (Base _) | Any | Product _) | Kconstr _ ->
                 fprintf ppf "kind %a" Jkind.format
                   inferred_jkind)))
         inferred_jkind

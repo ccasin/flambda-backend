@@ -508,7 +508,7 @@ module Desc : sig
   (** The description of a jkind, used as a return type from [get].  This
       description has no sort variables, but it might have [with]-types and thus
       needs the allowance machinery. *)
-  type 'd t = (Sort.Flat.t Layout.t, 'd) Types.layout_and_axes
+  type 'd t = (Sort.Flat.t Layout.t, 'd) Types.base_and_axes
 
   val get_const : 'd t -> 'd Const.t option
 

@@ -732,9 +732,32 @@ module With_bounds = struct
           type_exprs)
 end
 
-module Layout_and_axes = struct
+module Base = struct
+  let to_string layout_to_string = function
+    | Layout l -> layout_to_string l
+    | Kconstr p -> Path.name p
+
+  (* These are going to need some way to expand bases. *)
+  let sub base1 base2 =
+    match base1, base2 with
+    | Layout l1, Layout l2 -> Layout.sub l1 l2
+    | _ -> assert false (* XXX abstract kinds *)
+
+  let intersection base1 base2 =
+    match base1, base2 with
+    | Layout l1, Layout l2 ->
+      Option.map (fun l -> Layout l) (Layout.intersection l1 l2)
+    | _ -> assert false (* XXX abstract kinds *)
+
+  let format format_layout ppf base =
+    match base with
+    | Layout l -> format_layout ppf l
+    | Kconstr p -> Format.fprintf ppf "%s" (Path.name p)
+end
+
+module Base_and_axes = struct
   module Allow_disallow = Allowance.Magic_allow_disallow (struct
-    type (_, 'layout, 'd) sided = ('layout, 'd) layout_and_axes
+    type (_, 'layout, 'd) sided = ('layout, 'd) base_and_axes
 
     let disallow_left t =
       { t with with_bounds = With_bounds.disallow_left t.with_bounds }
@@ -751,45 +774,55 @@ module Layout_and_axes = struct
 
   include Allow_disallow
 
-  let map f t = { t with layout = f t.layout }
+  let map_layout f t =
+    match t.base with
+    | Kconstr _ as k -> { t with base = k }
+    | Layout l -> { t with base = Layout (f l) }
 
-  let map_option f t =
-    match f t.layout with None -> None | Some layout -> Some { t with layout }
+  let map_option_layout f t =
+    match t.base with
+    | Kconstr _ as k -> Some { t with base = k }
+    | Layout l -> (
+      match f l with None -> None | Some l -> Some { t with base = Layout l })
 
   let map_type_expr f t =
     { t with with_bounds = With_bounds.map_type_expr f t.with_bounds }
 
+  (* XXX abstract kinds: this is wrong, must expand kconstrs. *)
   let equal eq_layout
-      { layout = lay1;
+      { base = base1;
         mod_bounds = mod_bounds1;
         with_bounds = (No_with_bounds : (allowed * allowed) with_bounds)
       }
-      { layout = lay2;
+      { base = base2;
         mod_bounds = mod_bounds2;
         with_bounds = (No_with_bounds : (allowed * allowed) with_bounds)
       } =
-    eq_layout lay1 lay2 && Mod_bounds.equal mod_bounds1 mod_bounds2
+    match base1, base2 with
+    | Layout l1, Layout l2 ->
+      eq_layout l1 l2 && Mod_bounds.equal mod_bounds1 mod_bounds2
+    | _, _ -> assert false
 
   let try_allow_l :
       type l r.
-      ('layout, l * r) layout_and_axes ->
-      ('layout, Allowance.allowed * r) layout_and_axes option =
-   fun { layout; mod_bounds; with_bounds } ->
+      ('layout, l * r) base_and_axes ->
+      ('layout, Allowance.allowed * r) base_and_axes option =
+   fun { base; mod_bounds; with_bounds } ->
     match With_bounds.try_allow_l with_bounds with
     | None -> None
     | Some with_bounds ->
-      Some { layout; mod_bounds = Obj.magic mod_bounds; with_bounds }
+      Some { base; mod_bounds = Obj.magic mod_bounds; with_bounds }
 
-  let try_allow_r { layout; mod_bounds; with_bounds } =
+  let try_allow_r { base; mod_bounds; with_bounds } =
     match With_bounds.try_allow_r with_bounds with
     | Some with_bounds ->
-      Some { layout; mod_bounds = Obj.magic mod_bounds; with_bounds }
+      Some { base; mod_bounds = Obj.magic mod_bounds; with_bounds }
     | None -> None
 
-  let debug_print format_layout ppf { layout; mod_bounds; with_bounds } =
-    Format.fprintf ppf "{ layout = %a;@ mod_bounds = %a;@ with_bounds = %a }"
-      format_layout layout Mod_bounds.debug_print mod_bounds
-      With_bounds.debug_print with_bounds
+  let debug_print format_layout ppf { base; mod_bounds; with_bounds } =
+    Format.fprintf ppf "{ base = %a;@ mod_bounds = %a;@ with_bounds = %a }"
+      (Base.format format_layout)
+      base Mod_bounds.debug_print mod_bounds With_bounds.debug_print with_bounds
 
   type 'r normalize_mode =
     | Require_best : disallowed normalize_mode
@@ -824,8 +857,8 @@ module Layout_and_axes = struct
       ~skip_axes
       ?(map_type_info :
          (type_expr -> With_bounds_type_info.t -> With_bounds_type_info.t)
-         option) (t : (layout, l * r1) layout_and_axes) :
-      (layout, l * r2) layout_and_axes * Fuel_status.t =
+         option) (t : (layout, l * r1) base_and_axes) :
+      (layout, l * r2) base_and_axes * Fuel_status.t =
     (* handle a few common cases first, before doing anything else *)
     (* DEBUGGING
        Format.printf "@[normalize: %a@;  relevant_axes: %a@]@;"
@@ -1101,32 +1134,32 @@ include Allowance.Magic_allow_disallow (struct
 
   let disallow_right t =
     { t with
-      jkind = Layout_and_axes.disallow_right t.jkind;
+      jkind = Base_and_axes.disallow_right t.jkind;
       quality = Quality.disallow_right t.quality
     }
 
   let disallow_left t =
     { t with
-      jkind = Layout_and_axes.disallow_left t.jkind;
+      jkind = Base_and_axes.disallow_left t.jkind;
       quality = Quality.disallow_left t.quality
     }
 
   let allow_right t =
     { t with
-      jkind = Layout_and_axes.allow_right t.jkind;
+      jkind = Base_and_axes.allow_right t.jkind;
       quality = Quality.allow_right t.quality
     }
 
   let allow_left t =
     { t with
-      jkind = Layout_and_axes.allow_left t.jkind;
+      jkind = Base_and_axes.allow_left t.jkind;
       quality = Quality.allow_left t.quality
     }
 end)
 
 let try_allow_r t =
   let open Misc.Stdlib.Monad.Option.Syntax in
-  let* jkind = Layout_and_axes.try_allow_r t.jkind in
+  let* jkind = Base_and_axes.try_allow_r t.jkind in
   let* quality = Quality.try_allow_r t.quality in
   Some { t with jkind; quality }
 
@@ -1181,17 +1214,17 @@ let outcometree_of_modalities_new = ref (fun _ _ _ -> assert false)
 let set_outcometree_of_modalities_new p = outcometree_of_modalities_new := p
 
 module Const = struct
-  type 'd t = (Layout.Const.t, 'd) Types.layout_and_axes
+  type 'd t = (Layout.Const.t, 'd) Types.base_and_axes
 
   include Allowance.Magic_allow_disallow (struct
-    include Layout_and_axes.Allow_disallow
+    include Base_and_axes.Allow_disallow
 
     type (_, _, 'd) sided = 'd t
   end)
 
   let max =
     Types.
-      { layout = Layout.Const.max;
+      { base = Layout Layout.Const.max;
         mod_bounds = Mod_bounds.max;
         with_bounds = No_with_bounds
       }
@@ -1199,17 +1232,21 @@ module Const = struct
   let no_with_bounds_and_equal t1 t2 =
     let open Misc.Stdlib.Monad.Option.Syntax in
     let t1_t2 =
-      let* t1 = Layout_and_axes.try_allow_l t1 in
-      let* t1 = Layout_and_axes.try_allow_r t1 in
-      let* t2 = Layout_and_axes.try_allow_l t2 in
-      let* t2 = Layout_and_axes.try_allow_r t2 in
+      let* t1 = Base_and_axes.try_allow_l t1 in
+      let* t1 = Base_and_axes.try_allow_r t1 in
+      let* t2 = Base_and_axes.try_allow_l t2 in
+      let* t2 = Base_and_axes.try_allow_r t2 in
       Some (t1, t2)
     in
     match t1_t2 with
-    | Some (t1, t2) ->
-      Layout.Const.equal t1.layout t2.layout
-      && Mod_bounds.equal t1.mod_bounds t2.mod_bounds
     | None -> false
+    | Some (t1, t2) -> (
+      match t1.base, t2.base with
+      | Kconstr _, _ | _, Kconstr _ ->
+        assert false (* XXX abstract kinds: need equality *)
+      | Layout l1, Layout l2 ->
+        Layout.Const.equal l1 l2 && Mod_bounds.equal t1.mod_bounds t2.mod_bounds
+      )
 
   module Builtin = struct
     type nonrec t =
@@ -1224,7 +1261,7 @@ module Const = struct
         | false -> Mod_bounds.max)
         |> Mod_bounds.set_nullability nullability
       in
-      { layout; mod_bounds; with_bounds = No_with_bounds }
+      { base = Layout layout; mod_bounds; with_bounds = No_with_bounds }
 
     let any =
       { jkind = mk_jkind Any ~mode_crossing:false ~nullability:Maybe_null;
@@ -1265,7 +1302,7 @@ module Const = struct
 
     let immutable_data =
       { jkind =
-          { layout = Base Value;
+          { base = Layout (Base Value);
             mod_bounds =
               Mod_bounds.create ~locality:Locality.Const.max
                 ~linearity:Linearity.Const.min
@@ -1280,7 +1317,7 @@ module Const = struct
 
     let mutable_data =
       { jkind =
-          { layout = Base Value;
+          { base = Layout (Base Value);
             mod_bounds =
               Mod_bounds.create ~locality:Locality.Const.max
                 ~linearity:Linearity.Const.min
@@ -1547,7 +1584,9 @@ module Const = struct
     (** Write [actual] in terms of [base] *)
     let convert_with_base ~(base : Builtin.t) (actual : _ t) =
       let matching_layouts =
-        Layout.Const.equal base.jkind.layout actual.layout
+        match base.jkind.base, actual.base with
+        | Kconstr _, _ | _, Kconstr _ -> assert false (* XXX abstract kinds *)
+        | Layout l1, Layout l2 -> Layout.Const.equal l1 l2
       in
       let modal_bounds =
         get_modal_bounds ~base:base.jkind.mod_bounds actual.mod_bounds
@@ -1582,7 +1621,7 @@ module Const = struct
       | [out] -> Some out
       | [] -> None
 
-    let convert jkind =
+    let convert (jkind : _ t) =
       (* For each primitive jkind, we try to print the jkind in terms of it
          (this is possible if the primitive is a subjkind of it). We then choose
          the "simplest". The "simplest" is taken to mean the one with the least
@@ -1604,13 +1643,13 @@ module Const = struct
             convert_with_base
               ~base:
                 { jkind =
-                    { layout = jkind.layout;
+                    { base = jkind.base;
                       mod_bounds =
                         Mod_bounds.set_nullability Nullability.Non_null
                           Mod_bounds.max;
                       with_bounds = No_with_bounds
                     };
-                  name = Layout.Const.to_string jkind.layout
+                  name = Base.to_string Layout.Const.to_string jkind.base
                 }
               jkind
           in
@@ -1622,11 +1661,11 @@ module Const = struct
               convert_with_base
                 ~base:
                   { jkind =
-                      { layout = jkind.layout;
+                      { base = jkind.base;
                         mod_bounds = Mod_bounds.max;
                         with_bounds = No_with_bounds
                       };
-                    name = Layout.Const.to_string jkind.layout
+                    name = Base.to_string Layout.Const.to_string jkind.base
                   }
                 jkind
             in
@@ -1661,15 +1700,18 @@ module Const = struct
 
   let jkind_of_product_annotations (type l r) (jkinds : (l * r) t list) =
     let folder (type l r) (layouts_acc, mod_bounds_acc, with_bounds_acc)
-        ({ layout; mod_bounds; with_bounds } : (l * r) t) =
-      ( layout :: layouts_acc,
-        Mod_bounds.join mod_bounds mod_bounds_acc,
-        With_bounds.join with_bounds with_bounds_acc )
+        ({ base; mod_bounds; with_bounds } : (l * r) t) =
+      match base with
+      | Kconstr _ -> assert false (* XXX abstract kinds *)
+      | Layout layout ->
+        ( layout :: layouts_acc,
+          Mod_bounds.join mod_bounds mod_bounds_acc,
+          With_bounds.join with_bounds with_bounds_acc )
     in
     let layouts, mod_bounds, with_bounds =
       List.fold_left folder ([], Mod_bounds.min, No_with_bounds) jkinds
     in
-    { layout = Layout.Const.Product (List.rev layouts);
+    { base = Layout (Layout.Const.Product (List.rev layouts));
       mod_bounds;
       with_bounds
     }
@@ -1726,7 +1768,12 @@ module Const = struct
           ~externality:(value_for_axis ~axis:(Nonmodal Externality))
           ~nullability:(value_for_axis ~axis:(Nonmodal Nullability))
       in
-      { layout = base.layout; mod_bounds; with_bounds = No_with_bounds }
+      let layout =
+        match base.base with
+        | Kconstr _ -> assert false (* XXX abstract kinds *)
+        | Layout l -> l
+      in
+      { base = Layout layout; mod_bounds; with_bounds = No_with_bounds }
     | Product ts ->
       let jkinds =
         List.map (of_user_written_annotation_unchecked_level context) ts
@@ -1741,7 +1788,12 @@ module Const = struct
         let modality =
           Typemode.transl_modalities ~maturity:Stable Immutable [] modalities
         in
-        { layout = base.layout;
+        let layout =
+          match base.base with
+          | Kconstr _ -> assert false (* XXX abstract kinds *)
+          | Layout l -> l
+        in
+        { base = Layout layout;
           mod_bounds = base.mod_bounds;
           with_bounds =
             With_bounds.add_modality ~modality
@@ -1770,7 +1822,11 @@ module Const = struct
           Language_extension.Stable layouts
       | Base Void, _ -> Alpha
     in
-    scan_layout jkind.layout
+    match jkind.base with
+    | Kconstr _ -> Language_extension.Stable
+    (* No check needed here - we do not guard against depending on something
+       that needs a different extension level. *)
+    | Layout l -> scan_layout l
 
   let of_user_written_annotation ~context (annot : Parsetree.jkind_annotation) =
     let const = of_user_written_annotation_unchecked_level context annot in
@@ -1783,26 +1839,29 @@ module Const = struct
 end
 
 module Desc = struct
-  type 'd t = (Sort.Flat.t Layout.t, 'd) layout_and_axes
+  type 'd t = (Sort.Flat.t Layout.t, 'd) base_and_axes
 
-  let get_const t = Layout_and_axes.map_option Layout.get_flat_const t
+  let get_const t = Base_and_axes.map_option_layout Layout.get_flat_const t
+  (* abstract kinds always refer to flattened, constant layouts *)
 
   (* CR layouts v2.8: This will probably need to be overhauled with
      [with]-types. See also [Printtyp.out_jkind_of_desc], which uses the same
      algorithm. *)
   let format ppf t =
     let open Format in
-    let rec format_desc ~nested ppf (desc : _ t) =
-      match desc.layout with
-      | Sort (Var n) -> fprintf ppf "'s%d" (Sort.Var.get_print_number n)
+    let rec format_desc ~nested ppf (t : _ t) =
+      match (t.base : Sort.Flat.t Layout.t jkind_base) with
+      | Kconstr p -> Path.print ppf p
+      | Layout (Sort (Var n)) ->
+        fprintf ppf "'s%d" (Sort.Var.get_print_number n)
       (* Analyze a product before calling [get_const]: the machinery in
          [Const.format] works better for atomic layouts, not products. *)
-      | Product lays ->
+      | Layout (Product lays) ->
         let pp_sep ppf () = fprintf ppf "@ & " in
         Misc.pp_nested_list ~nested ~pp_element:format_desc ~pp_sep ppf
-          (List.map (fun layout -> { desc with layout }) lays)
-      | _ -> (
-        match get_const desc with
+          (List.map (fun layout -> { t with base = Layout layout }) lays)
+      | Layout _ -> (
+        match get_const t with
         | Some c -> Const.format ppf c
         | None -> assert false (* handled above *))
     in
@@ -1810,7 +1869,7 @@ module Desc = struct
 end
 
 module Jkind_desc = struct
-  let of_const t = Layout_and_axes.map Layout.of_const t
+  let of_const t = Base_and_axes.map_layout Layout.of_const t
 
   let add_nullability_crossing t =
     { t with
@@ -1843,44 +1902,44 @@ module Jkind_desc = struct
   let max = of_const Const.max
 
   let equate_or_equal ~allow_mutation t1 t2 =
-    Layout_and_axes.equal (Layout.equate_or_equal ~allow_mutation) t1 t2
+    Base_and_axes.equal (Layout.equate_or_equal ~allow_mutation) t1 t2
 
   let sub (type l r) ~type_equal:_ ~jkind_of_type
       (sub : (allowed * r) jkind_desc)
-      ({ layout = lay2; mod_bounds = bounds2; with_bounds = No_with_bounds } :
+      ({ base = base2; mod_bounds = bounds2; with_bounds = No_with_bounds } :
         (l * allowed) jkind_desc) =
     let axes_max_on_right =
       (* Optimization: if the upper_bound is max on the right, then that axis is
          irrelevant - the left will always satisfy the right along that axis. *)
       Mod_bounds.get_max_axes bounds2
     in
-    let ( ({ layout = lay1; mod_bounds = bounds1; with_bounds = No_with_bounds } :
+    let ( ({ base = base1; mod_bounds = bounds1; with_bounds = No_with_bounds } :
             (_ * allowed) jkind_desc),
           _ ) =
-      Layout_and_axes.normalize ~skip_axes:axes_max_on_right ~mode:Ignore_best
+      Base_and_axes.normalize ~skip_axes:axes_max_on_right ~mode:Ignore_best
         ~jkind_of_type sub
     in
-    let layout = Layout.sub lay1 lay2 in
+    let base = Base.sub base1 base2 in
     let bounds = Mod_bounds.less_or_equal bounds1 bounds2 in
-    Sub_result.combine layout bounds
+    Sub_result.combine base bounds
 
   let intersection
-      { layout = lay1; mod_bounds = mod_bounds1; with_bounds = with_bounds1 }
-      { layout = lay2; mod_bounds = mod_bounds2; with_bounds = with_bounds2 } =
-    match Layout.intersection lay1 lay2 with
+      { base = base1; mod_bounds = mod_bounds1; with_bounds = with_bounds1 }
+      { base = base2; mod_bounds = mod_bounds2; with_bounds = with_bounds2 } =
+    match Base.intersection base1 base2 with
     | None -> None
-    | Some layout ->
+    | Some base ->
       Some
-        { layout;
+        { base;
           mod_bounds = Mod_bounds.meet mod_bounds1 mod_bounds2;
           with_bounds = With_bounds.meet with_bounds1 with_bounds2
         }
 
-  let map_type_expr f t = Layout_and_axes.map_type_expr f t
+  let map_type_expr f t = Base_and_axes.map_type_expr f t
 
   let of_new_sort_var nullability_upper_bound =
     let layout, sort = Layout.of_new_sort_var () in
-    ( { layout;
+    ( { base = Layout layout;
         mod_bounds =
           Mod_bounds.set_nullability nullability_upper_bound Mod_bounds.max;
         with_bounds = No_with_bounds
@@ -1906,7 +1965,7 @@ module Jkind_desc = struct
   end
 
   let product tys_modalities layouts =
-    let layout = Layout.product layouts in
+    let base = Layout (Layout.product layouts) in
     let mod_bounds = Mod_bounds.min in
     let with_bounds =
       List.fold_right
@@ -1915,15 +1974,15 @@ module Jkind_desc = struct
             ~type_expr ~modality bounds)
         tys_modalities No_with_bounds
     in
-    { layout; mod_bounds; with_bounds }
+    { base; mod_bounds; with_bounds }
 
-  let get t = Layout_and_axes.map Layout.get t
+  let get t = Base_and_axes.map_layout Layout.get t
 
-  let get_const t = Layout_and_axes.map_option Layout.get_const t
+  let get_const t = Base_and_axes.map_option_layout Layout.get_const t
 
   module Debug_printers = struct
     let t ppf t =
-      Layout_and_axes.debug_print
+      Base_and_axes.debug_print
         (Layout.Debug_printers.t Sort.Debug_printers.t)
         ppf t
   end
@@ -2020,7 +2079,10 @@ module Builtin = struct
         (List.init arity (fun _ -> fst (Layout.of_new_sort_var ())))
     in
     let desc : _ jkind_desc =
-      { layout; mod_bounds = Mod_bounds.max; with_bounds = No_with_bounds }
+      { base = Layout layout;
+        mod_bounds = Mod_bounds.max;
+        with_bounds = No_with_bounds
+      }
     in
     fresh_jkind_poly desc ~annotation:None ~why:(Product_creation why)
   (* We do not [mark_best] here because the resulting jkind is used (only) in
@@ -2066,7 +2128,7 @@ let of_new_legacy_sort ~why = fst (of_new_legacy_sort_var ~why)
 
 let of_const (type l r) ~annotation ~why ~(quality : (l * r) jkind_quality)
     (c : (l * r) Const.t) =
-  { jkind = Layout_and_axes.map Layout.of_const c;
+  { jkind = Base_and_axes.map_layout Layout.of_const c;
     annotation;
     history = Creation why;
     has_warned = false;
@@ -2075,7 +2137,7 @@ let of_const (type l r) ~annotation ~why ~(quality : (l * r) jkind_quality)
   }
 
 let of_builtin ~why Const.Builtin.{ jkind; name } =
-  jkind |> Layout_and_axes.allow_left |> Layout_and_axes.disallow_right
+  jkind |> Base_and_axes.allow_left |> Base_and_axes.disallow_right
   |> of_const ~annotation:(mk_annot name)
        ~why
          (* The [Best] is OK here because this function is used only in
@@ -2229,7 +2291,7 @@ let for_boxed_tuple elts =
 
 let for_arrow =
   fresh_jkind
-    { layout = Sort (Base Value);
+    { base = Layout (Sort (Base Value));
       mod_bounds = Mod_bounds.for_arrow;
       with_bounds = No_with_bounds
     }
@@ -2248,7 +2310,7 @@ let for_object =
     Alloc.Monadic.Const_op.max
   in
   fresh_jkind
-    { layout = Sort (Base Value);
+    { base = Layout (Sort (Base Value));
       mod_bounds =
         Mod_bounds.create ~linearity ~locality ~uniqueness ~portability
           ~contention ~yielding ~externality:Externality.max
@@ -2265,11 +2327,11 @@ type normalize_mode =
   | Ignore_best
 
 let[@inline] normalize ~mode ~jkind_of_type t =
-  let mode : _ Layout_and_axes.normalize_mode =
+  let mode : _ Base_and_axes.normalize_mode =
     match mode with Require_best -> Require_best | Ignore_best -> Ignore_best
   in
   let jkind, fuel_result =
-    Layout_and_axes.normalize ~jkind_of_type ~skip_axes:Axis_set.empty ~mode
+    Base_and_axes.normalize ~jkind_of_type ~skip_axes:Axis_set.empty ~mode
       t.jkind
   in
   { t with
@@ -2284,8 +2346,10 @@ let[@inline] normalize ~mode ~jkind_of_type t =
       | _ -> t.ran_out_of_fuel_during_normalize)
   }
 
-let get_layout_defaulting_to_value { jkind = { layout; _ }; _ } =
-  Layout.default_to_value_and_get layout
+let get_layout_defaulting_to_value { jkind = { base; _ }; _ } =
+  match base with
+  | Kconstr _ -> assert false (* XXX abstract kinds *)
+  | Layout l -> Layout.default_to_value_and_get l
 
 let default_to_value t = ignore (get_layout_defaulting_to_value t)
 
@@ -2302,17 +2366,28 @@ let sort_of_jkind (t : jkind_l) : sort =
     | Sort s -> s
     | Product ls -> Sort.Product (List.map sort_of_layout ls)
   in
-  sort_of_layout t.jkind.layout
+  let layout =
+    match t.jkind.base with
+    | Kconstr _ -> assert false (* XXX abstract kinds *)
+    | Layout l -> l
+  in
+  sort_of_layout layout
 
-let get_layout jk : Layout.Const.t option = Layout.get_const jk.jkind.layout
+let get_layout jk : Layout.Const.t option =
+  match jk.jkind.base with
+  | Kconstr _ -> assert false (* XXX abstract kinds *)
+  | Layout l -> Layout.get_const l
 
-let extract_layout jk = jk.jkind.layout
+let extract_layout jk =
+  match jk.jkind.base with
+  | Kconstr _ -> assert false (* XXX abstract kinds *)
+  | Layout l -> l
 
 let get_modal_bounds (type l r) ~jkind_of_type (jk : (l * r) jkind) =
-  let ( ({ layout = _; mod_bounds; with_bounds = No_with_bounds } :
+  let ( ({ base = _; mod_bounds; with_bounds = No_with_bounds } :
           (_ * allowed) jkind_desc),
         _ ) =
-    Layout_and_axes.normalize ~mode:Ignore_best
+    Base_and_axes.normalize ~mode:Ignore_best
       ~skip_axes:Axis_set.all_nonmodal_axes ~jkind_of_type jk.jkind
   in
   Mod_bounds.
@@ -2341,11 +2416,11 @@ let all_except_externality =
   Axis_set.singleton (Nonmodal Externality) |> Axis_set.complement
 
 let get_externality_upper_bound ~jkind_of_type jk =
-  let ( ({ layout = _; mod_bounds; with_bounds = No_with_bounds } :
+  let ( ({ base = _; mod_bounds; with_bounds = No_with_bounds } :
           (_ * allowed) jkind_desc),
         _ ) =
-    Layout_and_axes.normalize ~mode:Ignore_best
-      ~skip_axes:all_except_externality ~jkind_of_type jk.jkind
+    Base_and_axes.normalize ~mode:Ignore_best ~skip_axes:all_except_externality
+      ~jkind_of_type jk.jkind
   in
   Mod_bounds.get mod_bounds ~axis:(Nonmodal Externality)
 
@@ -2373,10 +2448,10 @@ let get_nullability ~jkind_of_type jk =
   if all_with_bounds_are_irrelevant
   then Mod_bounds.nullability jk.jkind.mod_bounds
   else
-    let ( ({ layout = _; mod_bounds; with_bounds = No_with_bounds } :
+    let ( ({ base = _; mod_bounds; with_bounds = No_with_bounds } :
             (_ * allowed) jkind_desc),
           _ ) =
-      Layout_and_axes.normalize ~mode:Ignore_best ~jkind_of_type
+      Base_and_axes.normalize ~mode:Ignore_best ~jkind_of_type
         ~skip_axes:all_except_nullability jk.jkind
     in
     Mod_bounds.get mod_bounds ~axis:(Nonmodal Nullability)
@@ -2387,7 +2462,8 @@ let set_nullability_upper_bound jk nullability_upper_bound =
   in
   { jk with jkind = { jk.jkind with mod_bounds = new_bounds } }
 
-let set_layout jk layout = { jk with jkind = { jk.jkind with layout } }
+let set_layout jk layout =
+  { jk with jkind = { jk.jkind with base = Layout layout } }
 
 let apply_modality_l modality jk =
   let relevant_axes =
@@ -2419,13 +2495,18 @@ let apply_modality_r modality jk =
 let get_annotation jk = jk.annotation
 
 let decompose_product ({ jkind; _ } as jk) =
-  let mk_jkind layout = { jk with jkind = { jkind with layout } } in
+  let mk_jkind layout = set_layout jk layout in
   let deal_with_sort : Sort.t -> _ = function
     | Var _ -> None (* we've called [get] and there's *still* a variable *)
     | Base _ -> None
     | Product sorts -> Some (List.map (fun sort -> mk_jkind (Sort sort)) sorts)
   in
-  match jkind.layout with
+  let layout =
+    match jkind.base with
+    | Kconstr _ -> assert false (* XXX abstract kinds *)
+    | Layout l -> l
+  in
+  match layout with
   | Any -> None
   | Product layouts ->
     (* CR layouts v7.1: The histories here are wrong (we are giving each
@@ -2963,7 +3044,7 @@ module Violation = struct
     let mismatch_type =
       match t.violation with
       | Not_a_subjkind (k1, k2, _) ->
-        if Sub_result.is_le (Layout.sub k1.jkind.layout k2.jkind.layout)
+        if Sub_result.is_le (Base.sub k1.jkind.base k2.jkind.base)
         then Mode
         else Layout
       | No_intersection _ -> Layout
@@ -2971,21 +3052,24 @@ module Violation = struct
     let layout_or_kind =
       match mismatch_type with Mode -> "kind" | Layout -> "layout"
     in
-    let rec has_sort_var : Sort.Flat.t Layout.t -> bool = function
+    let rec has_sort_var_layout : Sort.Flat.t Layout.t -> bool = function
       | Sort (Var _) -> true
-      | Product layouts -> List.exists has_sort_var layouts
+      | Product layouts -> List.exists has_sort_var_layout layouts
       | Sort (Base _) | Any -> false
     in
-    let format_layout_or_kind ppf jkind =
+    let has_sort_var : Sort.Flat.t Layout.t jkind_base -> bool = function
+      | Kconstr _ -> false
+      | Layout l -> has_sort_var_layout l
+    in
+    let format_base_or_kind ppf jkind =
       match mismatch_type with
       | Mode -> Format.fprintf ppf "@,%a" format jkind
-      | Layout -> Layout.format ppf jkind.jkind.layout
+      | Layout -> Base.format Layout.format ppf jkind.jkind.base
     in
     let subjkind_format verb k2 =
-      if has_sort_var (get k2).layout
+      if has_sort_var (get k2).base
       then dprintf "%s representable" verb
-      else
-        dprintf "%s a sub%s of %a" verb layout_or_kind format_layout_or_kind k2
+      else dprintf "%s a sub%s of %a" verb layout_or_kind format_base_or_kind k2
     in
     let Pack_jkind k1, Pack_jkind k2, fmt_k1, fmt_k2, missing_cmi_option =
       match t with
@@ -3003,7 +3087,7 @@ module Violation = struct
         | None ->
           ( Pack_jkind k1,
             Pack_jkind k2,
-            dprintf "%s %a" layout_or_kind format_layout_or_kind k1,
+            dprintf "%s %a" layout_or_kind format_base_or_kind k1,
             subjkind_format "is not" k2,
             None )
         | Some p ->
@@ -3016,25 +3100,25 @@ module Violation = struct
         assert (Option.is_none missing_cmi);
         ( Pack_jkind k1,
           Pack_jkind k2,
-          dprintf "%s %a" layout_or_kind format_layout_or_kind k1,
-          dprintf "does not overlap with %a" format_layout_or_kind k2,
+          dprintf "%s %a" layout_or_kind format_base_or_kind k1,
+          dprintf "does not overlap with %a" format_base_or_kind k2,
           None )
     in
     if display_histories
     then
       let connective =
-        match t.violation, has_sort_var (get k2).layout with
+        match t.violation, has_sort_var (get k2).base with
         | Not_a_subjkind _, false ->
-          dprintf "be a sub%s of %a" layout_or_kind format_layout_or_kind k2
+          dprintf "be a sub%s of %a" layout_or_kind format_base_or_kind k2
         | No_intersection _, false ->
-          dprintf "overlap with %a" format_layout_or_kind k2
+          dprintf "overlap with %a" format_base_or_kind k2
         | _, true -> dprintf "be representable"
       in
       fprintf ppf "@[<v>%a@;%a@]"
         (Format_history.format_history
            ~intro:
              (dprintf "@[<hov 2>The %s of %a is %a@]" layout_or_kind pp_former
-                former format_layout_or_kind k1)
+                former format_base_or_kind k1)
            ~layout_or_kind)
         k1
         (Format_history.format_history
@@ -3115,11 +3199,11 @@ let combine_histories ~type_equal ~jkind_of_type reason (Pack_jkind k1)
         history_b
       | Equal -> choose_higher_scored_history history_a history_b
     in
-    match Layout_and_axes.(try_allow_l k1.jkind, try_allow_r k2.jkind) with
+    match Base_and_axes.(try_allow_l k1.jkind, try_allow_r k2.jkind) with
     | Some k1_l, Some k2_r ->
       choose_subjkind_history k1_l k1.history k2_r k2.history
     | _ -> (
-      match Layout_and_axes.(try_allow_r k1.jkind, try_allow_l k2.jkind) with
+      match Base_and_axes.(try_allow_r k1.jkind, try_allow_l k2.jkind) with
       | Some k1_r, Some k2_l ->
         choose_subjkind_history k2_l k2.history k1_r k1.history
       | _ -> choose_higher_scored_history k1.history k2.history)
@@ -3134,7 +3218,7 @@ let combine_histories ~type_equal ~jkind_of_type reason (Pack_jkind k1)
 
 let has_intersection t1 t2 =
   (* Need to check only the layouts: all the axes have bottom elements. *)
-  Option.is_some (Layout.intersection t1.jkind.layout t2.jkind.layout)
+  Option.is_some (Base.intersection t1.jkind.base t2.jkind.base)
 
 let intersection_or_error ~type_equal ~jkind_of_type ~reason t1 t2 =
   match Jkind_desc.intersection t1.jkind t2.jkind with
@@ -3220,7 +3304,7 @@ let sub_jkind_l ~type_equal ~jkind_of_type ?(allow_any_crossing = false) sub
   in
   let* () =
     (* Validate layouts *)
-    require_le (Layout.sub sub.jkind.layout super.jkind.layout)
+    require_le (Base.sub sub.jkind.base super.jkind.base)
   in
   match allow_any_crossing with
   | true -> Ok ()
@@ -3239,7 +3323,7 @@ let sub_jkind_l ~type_equal ~jkind_of_type ?(allow_any_crossing = false) sub
       Mod_bounds.get_max_axes best_super.jkind.mod_bounds
     in
     let right_bounds_seq = right_bounds |> With_bounds_types.to_seq in
-    let ( ({ layout = _;
+    let ( ({ base = _;
              mod_bounds = sub_upper_bounds;
              with_bounds = No_with_bounds
            } :
@@ -3263,7 +3347,7 @@ let sub_jkind_l ~type_equal ~jkind_of_type ?(allow_any_crossing = false) sub
       (* [Jkind_desc.map_normalize] handles the stepping, jkind lookups, and
          joining.  [map_type_info] handles looking for [ty] on the right and
          removing irrelevant axes. *)
-      Layout_and_axes.normalize sub.jkind ~skip_axes:axes_max_on_right
+      Base_and_axes.normalize sub.jkind ~skip_axes:axes_max_on_right
         ~jkind_of_type ~mode:Ignore_best
         ~map_type_info:(fun ty { relevant_axes = left_relevant_axes } ->
           let right_relevant_axes =
@@ -3292,19 +3376,27 @@ let sub_jkind_l ~type_equal ~jkind_of_type ?(allow_any_crossing = false) sub
     in
     Ok ()
 
+(* XXX check callsites - does this (and related functions) need to return "I
+   don't know" sometimes. Or at least the mli should say what they do on
+   abstract kinds. *)
 let is_void_defaulting = function
-  | { jkind = { layout = Sort s; _ }; _ } -> Sort.is_void_defaulting s
+  | { jkind = { base = Layout (Sort s); _ }; _ } -> Sort.is_void_defaulting s
   | _ -> false
 
 let is_obviously_max = function
   (* This doesn't do any mutation because mutating a sort variable can't make it
      any, and modal upper bounds are constant. *)
-  | { jkind = { layout = Any; mod_bounds; with_bounds = _ }; _ } ->
+  | { jkind = { base = Kconstr _; _ }; _ } ->
+    assert false (* XXX abstract kinds *)
+  | { jkind = { base = Layout Any; mod_bounds; with_bounds = _ }; _ } ->
     Mod_bounds.is_max mod_bounds
   | _ -> false
 
 let has_layout_any jkind =
-  match jkind.jkind.layout with Any -> true | _ -> false
+  match jkind.jkind.base with
+  | Kconstr _ -> assert false (* XXX abstract kinds *)
+  | Layout Any -> true
+  | Layout _ -> false
 
 let is_value_for_printing ~ignore_null { jkind; _ } =
   match Desc.get_const (Jkind_desc.get jkind) with
@@ -3537,11 +3629,12 @@ module Debug_printers = struct
       (match q with Best -> "Best" | Not_best -> "Not_best")
 
   module Const = struct
-    let t ppf ({ layout; mod_bounds; with_bounds } : _ Const.t) =
+    let t ppf ({ base; mod_bounds; with_bounds } : _ Const.t) =
       fprintf ppf
-        "@[<v 2>{ layout = %a@,; mod_bounds = %a@,; with_bounds = %a@, }@]"
-        Layout.Const.Debug_printers.t layout Mod_bounds.debug_print mod_bounds
-        With_bounds.debug_print with_bounds
+        "@[<v 2>{ base = %a@,; mod_bounds = %a@,; with_bounds = %a@, }@]"
+        (Base.format Layout.Const.Debug_printers.t)
+        base Mod_bounds.debug_print mod_bounds With_bounds.debug_print
+        with_bounds
   end
 end
 

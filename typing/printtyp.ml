@@ -1355,16 +1355,18 @@ let out_jkind_of_const_jkind jkind =
 (* CR layouts v2.8: This is just like [Jkind.format], and likely needs to
    be overhauled with [with]-types. *)
 let rec out_jkind_of_desc (desc : 'd Jkind.Desc.t) =
-  match desc.layout with
-  | Sort (Var n) ->
+  match desc.base with
+  | Layout (Sort (Var n)) ->
     Ojkind_var ("'_representable_layout_" ^
                 Int.to_string (Jkind.Sort.Var.get_print_number n))
   (* Analyze a product before calling [get_const]: the machinery in
      [Jkind.Const.to_out_jkind_const] works better for atomic layouts, not
      products. *)
-  | Product lays ->
+  | Layout (Product lays) ->
     Ojkind_product
-      (List.map (fun layout -> out_jkind_of_desc { desc with layout }) lays)
+      (List.map
+         (fun layout -> out_jkind_of_desc { desc with base = Layout layout })
+         lays)
   | _ -> match Jkind.Desc.get_const desc with
     | Some c -> out_jkind_of_const_jkind c
     | None -> assert false (* handled above *)
@@ -1382,8 +1384,8 @@ let out_jkind_option_of_jkind jkind =
        Unfortunately, this makes error messages really confusing, because
        we don't consider jkind annotations. *)
     Jkind.is_value_for_printing ~ignore_null:true jkind (* C2.1 *)
-    || (match desc.layout with
-        | Sort (Var _) -> not !Clflags.verbose_types (* X1 *)
+    || (match desc.base with
+        | Layout (Sort (Var _)) -> not !Clflags.verbose_types (* X1 *)
         | _ -> false)
   in
   if elide then None else Some (out_jkind_of_desc desc)
