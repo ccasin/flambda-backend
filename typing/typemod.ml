@@ -1389,6 +1389,7 @@ end = struct
     typexts: names_infos;
     classes: names_infos;
     class_types: names_infos;
+    jkinds: names_infos;
   }
 
   let new_names () = {
@@ -1399,6 +1400,7 @@ end = struct
     typexts = Hashtbl.create 16;
     classes = Hashtbl.create 16;
     class_types = Hashtbl.create 16;
+    jkinds = Hashtbl.create 16;
   }
 
   type t = {
@@ -1425,6 +1427,7 @@ end = struct
     | Extension_constructor -> names.typexts
     | Class -> names.classes
     | Class_type -> names.class_types
+    | Jkind -> names.jkinds
 
   let check cl t loc id (info : info) =
     let to_be_removed = t.to_be_removed in
@@ -1484,6 +1487,7 @@ end = struct
     | Sig_value (id, _, _) -> Value, id
     | Sig_class (id, _, _, _) -> Class, id
     | Sig_class_type (id, _, _, _) -> Class_type, id
+    | Sig_jkind (id, _, _) -> Jkind, id
 
   let check_item ?info names loc kind id ids =
     let info =
@@ -1561,6 +1565,7 @@ end = struct
         | Sig_modtype (id, mtd, _) -> Module_type, id, mtd.mtd_loc
         | Sig_class (id, c, _, _) -> Class, id, c.cty_loc
         | Sig_class_type (id, ct, _, _) -> Class_type, id, ct.clty_loc
+        | Sig_jkind (id, jkd, _) -> Jkind, id, jkd.jkind_loc
       in
       if Ident.Map.mem user_id to_remove.hide then
         None
@@ -3014,6 +3019,7 @@ and type_open_decl_aux ?used_slot ?toplevel funct_body names env od =
         | Sig_class(id, cd, rs, _) -> Sig_class(id, cd, rs, visibility)
         | Sig_class_type(id, ctd, rs, _) ->
             Sig_class_type(id, ctd, rs, visibility)
+        | Sig_jkind(id, jkd, _) -> Sig_jkind(id, jkd, visibility)
       ) sg
     in
     let open_descr = {

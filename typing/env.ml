@@ -39,6 +39,7 @@ type 'a usage_tbl = ('a -> unit) Types.Uid.Tbl.t
 let value_declarations  : unit usage_tbl ref = s_table Types.Uid.Tbl.create 16
 let type_declarations   : unit usage_tbl ref = s_table Types.Uid.Tbl.create 16
 let module_declarations : unit usage_tbl ref = s_table Types.Uid.Tbl.create 16
+let jkind_declarations   : unit usage_tbl ref = s_table Types.Uid.Tbl.create 16
 
 type constructor_usage = Positive | Pattern | Exported_private | Exported
 type constructor_usages =
@@ -155,6 +156,7 @@ type summary =
   | Env_persistent of summary * Ident.t
   | Env_value_unbound of summary * string * value_unbound_reason
   | Env_module_unbound of summary * string * module_unbound_reason
+  | Env_jkind of summary * Ident.t * jkind_declaration
 
 let map_summary f = function
     Env_empty -> Env_empty
@@ -172,6 +174,8 @@ let map_summary f = function
   | Env_persistent (s, id) -> Env_persistent (f s, id)
   | Env_value_unbound (s, u, r) -> Env_value_unbound (f s, u, r)
   | Env_module_unbound (s, u, r) -> Env_module_unbound (f s, u, r)
+  | Env_jkind (s, id, d) -> Env_jkind (f s, id, d)
+
 
 type address = Persistent_env.address =
   | Aunit of Compilation_unit.t
@@ -637,6 +641,7 @@ type t = {
   classes: (lock, class_data, class_data) IdTbl.t;
   cltypes: (empty, cltype_data, cltype_data) IdTbl.t;
   functor_args: unit Ident.tbl;
+  jkinds : (empty, jkind_data, jkind_data) IdTbl.t;
   summary: summary;
   local_constraints: type_declaration Path.Map.t;
   flags: int;
@@ -679,6 +684,7 @@ and structure_components = {
   mutable comp_modtypes: modtype_data NameMap.t;
   mutable comp_classes: class_data NameMap.t;
   mutable comp_cltypes: cltype_data NameMap.t;
+  mutable comp_jkinds: jkind_data NameMap.t
 }
 
 and functor_components = {
@@ -749,6 +755,10 @@ and cltype_data =
   { cltda_declaration : class_type_declaration;
     cltda_shape : Shape.t }
 
+and jkind_data =
+  { jkda_declaration : jkind_declaration;
+    jkda_shape : Shape.t }
+
 let clda_mode = Mode.Value.legacy |> Mode.Value.disallow_right
 
 let cm_mode = Mode.Value.legacy |> Mode.Value.disallow_right
@@ -762,7 +772,8 @@ let empty_structure =
     comp_types = NameMap.empty;
     comp_modules = NameMap.empty; comp_modtypes = NameMap.empty;
     comp_classes = NameMap.empty;
-    comp_cltypes = NameMap.empty }
+    comp_cltypes = NameMap.empty;
+    comp_jkinds = NameMap.empty }
 
 type unbound_value_hint =
   | No_hint
@@ -785,6 +796,7 @@ type lookup_error =
   | Unbound_class of Longident.t
   | Unbound_modtype of Longident.t
   | Unbound_cltype of Longident.t
+  | Unbound_jkind of Longident.t
   | Unbound_instance_variable of string
   | Not_an_instance_variable of string
   | Masked_instance_variable of Longident.t
@@ -902,6 +914,7 @@ let empty = {
   summary = Env_empty; local_constraints = Path.Map.empty;
   flags = 0;
   functor_args = Ident.empty;
+  jkinds = IdTbl.empty
  }
 
 let in_signature b env =
@@ -1534,6 +1547,14 @@ let find_type p env =
 let find_type_descrs p env =
   (find_type_data p env Path.Set.empty).tda_descriptions
 
+let find_jkind p env =
+  match p with
+  | Pident id -> (IdTbl.find_same id env.jkinds).jkda_declaration
+  | Pdot(p, s) ->
+    let sc = find_structure_components p env in
+    (NameMap.find s sc.comp_jkinds).jkda_declaration
+  | Papply _ | Pextra_ty _ -> raise Not_found
+
 let rec find_module_address path env =
   match path with
   | Pident id -> find_ident_module_address id env
@@ -1655,6 +1676,8 @@ let find_shape env (ns : Shape.Sig_component_kind.t) id =
       (IdTbl.find_same_without_locks id env.classes).clda_shape
   | Class_type ->
       (IdTbl.find_same id env.cltypes).cltda_shape
+  | Jkind ->
+      (IdTbl.find_same id env.jkinds).jkda_shape
 
 let shape_of_path ~namespace env =
   Shape.of_path ~namespace ~find_shape:(find_shape env)
@@ -1798,6 +1821,12 @@ let find_type_expansion_opt path env =
      an approximation using their manifest type. *)
   | Some body ->
       (decl.type_params, body, decl.type_expansion_scope)
+  | _ -> raise Not_found
+
+let _find_jkind_expansion path env = (* XXX expose and use *)
+  let decl = find_jkind path env in
+  match decl.jkind_manifest with
+  | Some body -> body
   | _ -> raise Not_found
 
 let find_modtype_expansion_lazy path env =
@@ -2022,6 +2051,12 @@ let prefix_idents root prefixing_sub sg =
         ((Sig_class_type(id, ctd, rs, vis), p) :: items_and_paths)
         (Subst.add_type id p prefixing_sub)
         rem
+    | Sig_jkind(id, jkd, vis) :: rem ->
+      let p = Pdot(root, Ident.name id) in
+      prefix_idents root
+        ((Sig_jkind(id, jkd, vis), p) :: items_and_paths)
+        (Subst.add_jkind id p prefixing_sub)
+        rem
   in
   let sg = Subst.Lazy.force_signature_once sg in
   prefix_idents root [] prefixing_sub sg
@@ -2078,7 +2113,8 @@ let rec components_of_module_maker
           comp_labels = NameMap.empty; comp_unboxed_labels = NameMap.empty;
           comp_types = NameMap.empty;
           comp_modules = NameMap.empty; comp_modtypes = NameMap.empty;
-          comp_classes = NameMap.empty; comp_cltypes = NameMap.empty }
+          comp_classes = NameMap.empty; comp_cltypes = NameMap.empty;
+          comp_jkinds = NameMap.empty }
       in
       let items_and_paths, sub =
         prefix_idents cm_path cm_prefixing_subst sg
@@ -2247,7 +2283,13 @@ let rec components_of_module_maker
             let shape = Shape.proj cm_shape (Shape.Item.class_type id) in
             let cltda = { cltda_declaration = decl'; cltda_shape = shape } in
             c.comp_cltypes <-
-              NameMap.add (Ident.name id) cltda c.comp_cltypes)
+              NameMap.add (Ident.name id) cltda c.comp_cltypes
+        | Sig_jkind(id, decl, _) ->
+            let decl' = Subst.jkind_declaration sub decl in
+            let shape = Shape.proj cm_shape (Shape.Item.jkind id) in
+            let jkda = { jkda_declaration = decl'; jkda_shape = shape } in
+            c.comp_jkinds <- NameMap.add (Ident.name id) jkda c.comp_jkinds
+      )
         items_and_paths;
         Ok (Structure_comps c)
   | Mty_functor(arg, ty_res) ->
@@ -2567,6 +2609,20 @@ and store_cltype id desc shape env =
     cltypes = IdTbl.add id cltda env.cltypes;
     summary = Env_cltype(env.summary, id, desc) }
 
+let store_jkind ~check id info shape env =
+  let loc = info.jkind_loc in
+  if check then
+    check_usage loc id info.jkind_uid
+      (fun s -> Warnings.Unused_kind_declaration s)
+      !jkind_declarations;
+  let jkda =
+    { jkda_declaration = info;
+      jkda_shape = shape }
+  in
+  { env with
+    jkinds = IdTbl.add id jkda env.jkinds;
+    summary = Env_jkind(env.summary, id, info) }
+
 (* Compute the components of a functor application in a path. *)
 
 let components_of_functor_appl ~loc ~f_path ~f_comp ~arg env =
@@ -2644,6 +2700,10 @@ and add_module_declaration_lazy
     store_module ~update_summary ~check id addr presence md shape locks env
   in
   if arg then add_functor_arg id env else env
+
+let add_jkind ~check ?shape id info env =
+  let shape = shape_or_leaf info.jkind_uid shape in
+  store_jkind ~check id info shape env
 
 let add_module_declaration ?(arg=false) ?shape ~check id presence md ?locks env =
   add_module_declaration_lazy ~update_summary:true ~arg ?shape ~check id
@@ -2800,6 +2860,9 @@ end) = struct
     | Sig_class_type(id, decl, _, _) ->
         let map, shape = proj_shape map mod_shape (Shape.Item.class_type id) in
         map, add_cltype ?shape id decl env
+    | Sig_jkind(id, decl, _) ->
+        let map, shape = proj_shape map mod_shape (Shape.Item.jkind id) in
+        map, add_jkind ~check:false ?shape id decl env
 
   let rec add_signature map mod_shape sg env =
     match sg with
@@ -3028,6 +3091,11 @@ let mark_cltype_used uid =
   | mark -> mark ()
   | exception Not_found -> ()
 
+let mark_jkind_used uid =
+  match Types.Uid.Tbl.find !jkind_declarations uid with
+  | mark -> mark ()
+  | exception Not_found -> ()
+
 let set_value_used_callback vd callback =
   Types.Uid.Tbl.add !value_declarations vd.Subst.Lazy.val_uid callback
 
@@ -3121,6 +3189,15 @@ let use_cltype ~use ~loc path desc =
     mark_cltype_used desc.clty_uid;
     Builtin_attributes.check_alerts loc desc.clty_attributes
       (Path.name path)
+  end
+
+let use_jkind ~use ~loc path jkda =
+  if use then begin
+    let decl = jkda.jkda_declaration in
+    mark_jkind_used decl.jkind_uid;
+    Builtin_attributes.check_alerts loc decl.jkind_attributes
+      (Path.name path)
+    (* XXX I guess this means we support alerts - test them *)
   end
 
 let use_label ~use ~loc usage env lbl =
@@ -3338,6 +3415,14 @@ let lookup_ident_cltype ~errors ~use ~loc s env =
   | exception Not_found ->
       may_lookup_error errors loc env (Unbound_cltype (Lident s))
 
+let lookup_ident_jkind ~errors ~use ~loc s env =
+  match IdTbl.find_name wrap_identity ~mark:use s env.jkinds with
+  | path, jkind ->
+      use_jkind ~use ~loc path jkind;
+      path, jkind.jkda_declaration
+  | exception Not_found ->
+      may_lookup_error errors loc env (Unbound_jkind (Lident s))
+
 let find_all_labels (type rep) ~(record_form : rep record_form) ~mark s env
   : (rep gen_label_description * (unit -> unit)) list =
   match record_form with
@@ -3544,6 +3629,16 @@ let lookup_dot_cltype ~errors ~use ~loc l s env =
   | exception Not_found ->
       may_lookup_error errors loc env (Unbound_cltype (Ldot(l, s)))
 
+let lookup_dot_jkind ~errors ~use ~loc l s env =
+  let (p, _, comps) = lookup_structure_components ~errors ~use ~loc l env in
+  match NameMap.find s comps.comp_jkinds with
+  | jkind ->
+      let path = Pdot(p, s) in
+      use_jkind ~use ~loc path jkind;
+      (path, jkind.jkda_declaration)
+  | exception Not_found ->
+      may_lookup_error errors loc env (Unbound_jkind (Ldot(l, s)))
+
 let lookup_all_dot_labels ~record_form ~errors ~use ~loc usage l s env =
   let (_, _, comps) = lookup_structure_components ~errors ~use ~loc l env in
   match NameMap.find s (comp_labels record_form comps) with
@@ -3656,7 +3751,8 @@ let remove_last_open root env0 =
     | Env_persistent _
     | Env_copy_types _
     | Env_value_unbound _
-    | Env_module_unbound _ ->
+    | Env_module_unbound _
+    | Env_jkind _ ->
         map_summary filter_summary summary
   in
   match filter_summary env0.summary with
@@ -3858,6 +3954,12 @@ let lookup_cltype ~errors ~use ~loc lid env =
   | Ldot(l, s) -> lookup_dot_cltype ~errors ~use ~loc l s env
   | Lapply _ -> assert false
 
+let lookup_jkind ~errors ~use ~loc lid env =
+  match lid with
+  | Lident s -> lookup_ident_jkind ~errors ~use ~loc s env
+  | Ldot(l, s) -> lookup_dot_jkind ~errors ~use ~loc l s env
+  | Lapply _ -> assert false
+
 let lookup_all_labels ~errors ~use ~record_form ~loc usage lid env =
   match lid with
   | Lident s ->
@@ -3955,6 +4057,10 @@ let find_constructor_by_name lid env =
 let find_label_by_name record_form lid env =
   let loc = Location.(in_file !input_name) in
   lookup_label ~record_form ~errors:false ~use:false ~loc Projection lid env
+
+let find_jkind_by_name lid env =
+  let loc = Location.(in_file !input_name) in
+  lookup_jkind ~errors:false ~use:false ~loc lid env
 
 (* Stable name lookup for printing *)
 
@@ -4214,6 +4320,10 @@ and fold_cltypes f =
   find_all wrap_identity
     (fun env -> env.cltypes) (fun sc -> sc.comp_cltypes)
     (fun k p cltda acc -> f k p cltda.cltda_declaration acc)
+and fold_jkinds f =
+  find_all wrap_identity
+    (fun env -> env.jkinds) (fun sc -> sc.comp_jkinds)
+    (fun k p jkda acc -> f k p jkda.jkda_declaration acc)
 
 let filter_non_loaded_persistent f env =
   let to_remove =
@@ -4263,7 +4373,8 @@ let filter_non_loaded_persistent f env =
       | Env_copy_types _
       | Env_persistent _
       | Env_value_unbound _
-      | Env_module_unbound _ ->
+      | Env_module_unbound _
+      | Env_jkind _ ->
           map_summary (fun s -> filter_summary s ids) summary
   in
   { env with
@@ -4348,6 +4459,8 @@ let extract_modtypes path env =
   fold_modtypes (fun name _ _ acc -> name :: acc) path env []
 let extract_cltypes path env =
   fold_cltypes (fun name _ _ acc -> name :: acc) path env []
+let extract_jkinds path env =
+  fold_jkinds (fun name _ _ acc -> name :: acc) path env []
 let extract_instance_variables env =
   fold_values
     (fun name _ descr _ acc ->
@@ -4504,6 +4617,10 @@ let report_lookup_error _loc env ppf = function
       fprintf ppf "Unbound class type %a"
         (Style.as_inline_code !print_longident) lid;
       spellcheck ppf extract_cltypes env lid
+  | Unbound_jkind lid ->
+      fprintf ppf "Unbound jkind %a"
+        (Style.as_inline_code !print_longident) lid;
+      spellcheck ppf extract_jkinds env lid
   | Unbound_instance_variable s ->
       fprintf ppf "Unbound instance variable %a" Style.inline_code s;
       spellcheck_name ppf extract_instance_variables env s;

@@ -101,6 +101,11 @@ let rec env_from_summary ~allow_missing_modules sum subst =
       | Env_module_unbound (s, str, reason) ->
           let env = env_from_summary ~allow_missing_modules s subst in
           Env.enter_unbound_module str reason env
+      | Env_jkind (s, id, desc) ->
+          let env = env_from_summary ~allow_missing_modules s subst in
+          (* Subst is unnecessary here because abstract jkind manifests never
+             contain types. *)
+          Env.add_jkind ~check:false id desc env
     in
       Hashtbl.add env_cache (sum, subst) env;
       env

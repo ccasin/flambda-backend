@@ -483,6 +483,9 @@ val of_type_decl_default :
   Parsetree.type_declaration ->
   Types.jkind_l
 
+(** Creates an abstract jkind, with max with-bounds, from the path. *)
+val of_path : why:History.creation_reason -> Path.t -> Types.jkind_lr
+
 (** Choose an appropriate jkind for a boxed record type *)
 val for_boxed_record : Types.label_declaration list -> Types.jkind_l
 

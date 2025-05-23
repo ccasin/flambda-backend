@@ -44,6 +44,7 @@ type t =
   { types: type_replacement Path.Map.t;
     modules: Path.t Path.Map.t;
     modtypes: module_type Path.Map.t;
+    jkinds: Path.t Path.Map.t;
 
     additional_action: additional_action;
 
@@ -54,6 +55,7 @@ let identity =
   { types = Path.Map.empty;
     modules = Path.Map.empty;
     modtypes = Path.Map.empty;
+    jkinds = Path.Map.empty;
     additional_action = No_action;
     loc = None;
     last_compose = None;
@@ -104,6 +106,10 @@ let add_module id p s = add_module_path (Pident id) p s
 let add_modtype_path p ty s =
   { s with modtypes = Path.Map.add p ty s.modtypes; last_compose = None }
 let add_modtype id ty s = add_modtype_path (Pident id) ty s
+
+let add_jkind_path id p s =
+  { s with jkinds = Path.Map.add id p s.jkinds; last_compose = None }
+let add_jkind id p s = add_jkind_path (Pident id) p s
 
 type additional_action_config =
   | Duplicate_variables
@@ -257,6 +263,16 @@ let modtype_path s path =
          | Papply _ | Pextra_ty _ ->
             fatal_error "Subst.modtype_path"
          | Pident _ -> path
+
+let jkind_path s path =
+  try Path.Map.find path s.jkinds
+  with Not_found ->
+    match path with
+    | Pident _ -> path
+    | Pdot(p, n) ->
+       Pdot(module_path s p, n)
+    | Papply(_, _) | Pextra_ty _ ->
+       fatal_error "Subst.jkind_path"
 
 (* For values, extension constructors, classes and class types *)
 let value_path s path =
@@ -566,6 +582,29 @@ let unsafe_mode_crossing copy_scope s loc
       Jkind.With_bounds.map_type_expr (typexp copy_scope s loc)
         unsafe_with_bounds }
 
+let jkind' copy_scope s loc jkind =
+  let jkind =
+    match s.additional_action with
+    | Prepare_for_saving { prepare_jkind } -> prepare_jkind loc jkind
+    | Duplicate_variables | No_action -> jkind
+  in
+  let jkind =
+    match jkind.jkind.base with
+    | Kconstr p ->
+      let base = Kconstr (jkind_path s p) in
+      { jkind with jkind = { jkind.jkind with base } }
+    | Layout _ -> jkind
+  in
+  Jkind.map_type_expr (typexp copy_scope s loc) jkind
+
+let jkind_declaration' copy_scope s decl =
+  { jkind_loc = loc s decl.jkind_loc;
+    jkind_uid = decl.jkind_uid;
+    jkind_manifest =
+      Option.map (jkind' copy_scope s decl.jkind_loc) decl.jkind_manifest;
+    jkind_attributes = attrs s decl.jkind_attributes;
+  }
+
 let rec type_declaration' copy_scope s decl =
   let unsafe_mode_crossing =
     Option.map (unsafe_mode_crossing copy_scope s decl.type_loc)
@@ -596,16 +635,7 @@ let rec type_declaration' copy_scope s decl =
           None -> None
         | Some ty -> Some(typexp copy_scope s decl.type_loc ty)
       end;
-    type_jkind =
-      begin
-        let jkind =
-          match s.additional_action with
-          | Prepare_for_saving { prepare_jkind } ->
-            prepare_jkind decl.type_loc decl.type_jkind
-          | Duplicate_variables | No_action -> decl.type_jkind
-        in
-        Jkind.map_type_expr (typexp copy_scope s decl.type_loc) jkind
-      end;
+    type_jkind = jkind' copy_scope s decl.type_loc decl.type_jkind;
     type_private = decl.type_private;
     type_variance = decl.type_variance;
     type_separability = decl.type_separability;
@@ -621,6 +651,9 @@ let rec type_declaration' copy_scope s decl =
 
 let type_declaration s decl =
   For_copy.with_scope (fun copy_scope -> type_declaration' copy_scope s decl)
+
+let jkind_declaration s decl =
+  For_copy.with_scope (fun copy_scope -> jkind_declaration' copy_scope s decl)
 
 let class_signature copy_scope s loc sign =
   { csig_self = typexp copy_scope s loc sign.csig_self;
@@ -835,6 +868,12 @@ let rename_bound_idents scoping s sg =
     | Sig_typext(id, ec, es, vis) :: rest ->
         let id' = rename id in
         rename_bound_idents s (Sig_typext(id',ec,es,vis) :: sg) rest
+    | Sig_jkind (id, jkd, vis) :: rest ->
+        let id' = rename id in
+        rename_bound_idents
+          (add_jkind id (Pident id') s)
+          (Sig_jkind(id', jkd, vis) :: sg)
+          rest
   in
   rename_bound_idents s [] sg
 
@@ -954,6 +993,8 @@ and subst_lazy_signature_item' copy_scope scoping s comp =
       Sig_class(id, class_declaration' copy_scope s d, rs, vis)
   | Sig_class_type(id, d, rs, vis) ->
       Sig_class_type(id, cltype_declaration' copy_scope s d, rs, vis)
+  | Sig_jkind(id, d, vis) ->
+      Sig_jkind(id, jkind_declaration' copy_scope s d, vis)
 
 and modtype scoping s t =
   t |> lazy_modtype |> subst_lazy_modtype scoping s |> force_modtype
@@ -971,6 +1012,7 @@ and compose s1 s2 =
         { types = merge_type_path_maps (type_replacement s2) s1.types s2.types;
           modules = merge_path_maps (module_path s2) s1.modules s2.modules;
           modtypes = merge_path_maps (modtype Keep s2) s1.modtypes s2.modtypes;
+          jkinds = merge_path_maps (jkind_path s2) s1.jkinds s2.jkinds;
           additional_action = begin
             match s1.additional_action, s2.additional_action with
             | action, No_action | No_action, action -> action

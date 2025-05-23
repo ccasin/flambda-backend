@@ -364,6 +364,8 @@ let type_iterators =
     | Sig_modtype (_, mtd, _)       -> it.it_modtype_declaration it mtd
     | Sig_class (_, cd, _, _)       -> it.it_class_declaration it cd
     | Sig_class_type (_, ctd, _, _) -> it.it_class_type_declaration it ctd
+    | Sig_jkind (_ , _jkd, _)       -> ()
+    (* currently jkind declarations have nothing interesting to iterate over *)
   and it_value_description it vd =
     it.it_type_expr it vd.val_type
   and it_type_declaration it td =
@@ -433,7 +435,7 @@ let type_iterators =
     it_type_kind; it_class_type; it_functor_param; it_module_type;
     it_signature; it_class_type_declaration; it_class_declaration;
     it_modtype_declaration; it_module_declaration; it_extension_constructor;
-    it_type_declaration; it_value_description; it_signature_item; }
+    it_type_declaration; it_value_description; it_signature_item }
 
 let copy_row f fixed row keep more =
   let Row {fields = orig_fields; fixed = orig_fixed; closed; name = orig_name} =

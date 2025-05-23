@@ -144,7 +144,7 @@ let human_unique n id = Printf.sprintf "%s/%d" (Ident.name id) n
     | Extension_constructor
     | Class
     | Class_type
-
+    | Jkind
 
 module Namespace = struct
 
@@ -156,6 +156,7 @@ module Namespace = struct
     | Class_type -> 4
     | Extension_constructor | Value | Constructor | Label -> 5
     | Unboxed_label -> 6
+    | Jkind -> 7
      (* we do not handle those component *)
 
   let size = 1 + id Unboxed_label
@@ -175,6 +176,7 @@ module Namespace = struct
     | Some Module_type -> to_lookup Env.find_modtype_by_name
     | Some Class -> to_lookup Env.find_class_by_name
     | Some Class_type -> to_lookup Env.find_cltype_by_name
+    | Some Jkind -> to_lookup Env.find_jkind_by_name
     | None
     | Some(Value|Extension_constructor|Constructor|Label|Unboxed_label) ->
          fun _ -> raise Not_found
@@ -188,6 +190,7 @@ module Namespace = struct
         | Some Module_type -> (in_printing_env @@ Env.find_modtype path).mtd_loc
         | Some Class -> (in_printing_env @@ Env.find_class path).cty_loc
         | Some Class_type -> (in_printing_env @@ Env.find_cltype path).clty_loc
+        | Some Jkind -> (in_printing_env @@ Env.find_jkind path).jkind_loc
         | Some (Extension_constructor|Value|Constructor|Label|Unboxed_label)
         | None ->
             Location.none
@@ -2497,7 +2500,8 @@ let dummy =
 *)
 
 let ident_sigitem = function
-  | Types.Sig_type(ident,_,_,_) ->  {hide=true;ident}
+  | Types.Sig_type(ident,_,_,_)
+  | Types.Sig_jkind (ident,_,_)->  {hide=true;ident}
   | Types.Sig_class(ident,_,_,_)
   | Types.Sig_class_type (ident,_,_,_)
   | Types.Sig_module(ident,_, _,_,_)
@@ -2582,6 +2586,16 @@ module Abbrev = struct
     | None ->
         None, false
 end
+
+let tree_of_jkind_declaration id decl =
+  let ojkind =
+    { ojkind_name = Ident.name id
+    ; ojkind_jkind =
+        Option.map (fun jkind -> out_jkind_of_desc (Jkind.get jkind))
+          decl.jkind_manifest
+    }
+  in
+  Osig_jkind ojkind
 
 let rec tree_of_modtype ?abbrev = function
   | Mty_ident p ->
@@ -2703,6 +2717,8 @@ and tree_of_sigitem ?abbrev = function
       tree_of_class_declaration id decl rs
   | Sig_class_type(id, decl, rs, _) ->
       tree_of_cltype_declaration id decl rs
+  | Sig_jkind(id, decl, _) ->
+      tree_of_jkind_declaration id decl
 
 and tree_of_modtype_declaration ?abbrev id decl =
   let mty =

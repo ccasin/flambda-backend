@@ -327,6 +327,8 @@ module History = struct
     | Unboxed_tuple
     | Unboxed_record
 
+  type abstract_creation_reason = Strengthening of Ident.t * Path.t
+
   type creation_reason =
     | Annotated : ('l * 'r) annotation_context * Location.t -> creation_reason
     | Missing_cmi of Path.t
@@ -339,6 +341,7 @@ module History = struct
     | Product_creation of product_creation_reason
     | Concrete_creation of concrete_creation_reason
     | Concrete_legacy_creation of concrete_legacy_creation_reason
+    | Abstract_creation_reason of abstract_creation_reason
     | Primitive of Ident.t
     | Unboxed_primitive of Ident.t
     | Imported

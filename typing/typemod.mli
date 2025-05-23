@@ -84,6 +84,7 @@ module Sig_component_kind : sig
     | Extension_constructor
     | Class
     | Class_type
+    | Jkind
 
   val to_string : t -> string
 end

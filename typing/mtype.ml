@@ -138,6 +138,19 @@ and strengthen_lazy_sig' ~aliasable sg p =
       sigelt :: strengthen_lazy_sig' ~aliasable rem p
   | (Sig_class_type _ as sigelt) :: rem ->
       sigelt :: strengthen_lazy_sig' ~aliasable rem p
+  | Sig_jkind(id, decl, vis) :: rem ->
+      (* XXX write tests for strengthening *)
+      let decl =
+        match decl.jkind_manifest with
+        | Some _ -> decl
+        | None ->
+          let why : Jkind_intf.History.creation_reason =
+            Abstract_creation_reason (Strengthening (id, p))
+          in
+          let manif = Some (Jkind.of_path ~why (Pdot(p, Ident.name id))) in
+          { decl with jkind_manifest = manif }
+      in
+      Sig_jkind(id, decl, vis) :: strengthen_lazy_sig' ~aliasable rem p
 
 and strengthen_lazy_sig ~aliasable sg p =
   let sg = Subst.Lazy.force_signature_once sg in
@@ -286,7 +299,7 @@ and expand_paths_lazy_sig_items paths env sg =
           let env = Env.add_modtype_lazy ~update_summary:false id mtd env in
           env, Sig_modtype (id,mtd,vis)
       | Sig_value _ | Sig_type _ | Sig_typext _ | Sig_class _
-      | Sig_class_type _ as item ->
+      | Sig_class_type _ | Sig_jkind _ as item ->
           env, item
   in
   List.fold_left_map expand_item env sg |> snd
@@ -350,6 +363,9 @@ let rec sig_make_manifest sg =
                    | Some _ -> decl.mtd_type }
     in
     Sig_modtype(Ident.rename id, newdecl, vis) :: sig_make_manifest rem
+  | Sig_jkind _ as sigelt  :: rem ->
+    (* XXX wrong - write some include functor test cases. *)
+    sigelt :: sig_make_manifest rem
 
 let rec make_aliases_absent ~aliased pres mty =
   (* aliased=true means that mty is subject to aliasable strengthening
@@ -371,7 +387,7 @@ let rec make_aliases_absent ~aliased pres mty =
           in
           Sig_module(id, pres, md, rs, priv)
         | Sig_value _ | Sig_type _ | Sig_typext _ | Sig_modtype _
-        | Sig_class _ | Sig_class_type _ as item ->
+        | Sig_class _ | Sig_class_type _ | Sig_jkind _ as item ->
           item
       in
       pres, Mty_signature(List.map make_item sg)
@@ -517,6 +533,7 @@ and nondep_sig_item env va ids = function
       Sig_class(id, Ctype.nondep_class_declaration env ids d, rs, vis)
   | Sig_class_type(id, d, rs, vis) ->
       Sig_class_type(id, Ctype.nondep_cltype_declaration env ids d, rs, vis)
+  | Sig_jkind _ as sig_item -> sig_item (* XXX *)
 
 and nondep_sig env va ids sg =
   let scope = Ctype.create_scope () in
@@ -614,8 +631,11 @@ and type_paths_sig env p sg =
         p rem
   | Sig_modtype(id, decl, _) :: rem ->
       type_paths_sig (Env.add_modtype id decl env) p rem
-  | (Sig_value _ | Sig_typext _ | Sig_class _ | Sig_class_type _) :: rem ->
-      type_paths_sig env p rem
+  | ( Sig_value _ | Sig_typext _ | Sig_class _ | Sig_class_type _
+    | Sig_jkind _ ) :: rem ->
+    type_paths_sig env p rem
+(* XXX This is used for a recmod check that I probably need for jkinds.  But
+   maybe a separate check for kinds would make more sense? *)
 
 
 let rec no_code_needed_mod env pres mty =
@@ -642,7 +662,7 @@ and no_code_needed_sig env sg =
       no_code_needed_mod env pres md.md_type &&
       no_code_needed_sig
         (Env.add_module_declaration ~check:false id pres md env) rem
-  | (Sig_type _ | Sig_modtype _ | Sig_class_type _) :: rem ->
+  | (Sig_type _ | Sig_modtype _ | Sig_class_type _ | Sig_jkind _) :: rem ->
       no_code_needed_sig env rem
   | (Sig_typext _ | Sig_class _) :: _ ->
       false
@@ -681,7 +701,8 @@ and contains_type_item env = function
   | Sig_type _
   | Sig_typext _
   | Sig_class _
-  | Sig_class_type _ ->
+  | Sig_class_type _
+  | Sig_jkind _ -> (* XXX look at what this is used for. *)
       ()
 
 let contains_type env mty =

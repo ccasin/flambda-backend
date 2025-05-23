@@ -136,6 +136,7 @@ type field_kind =
   | Field_modtype
   | Field_class
   | Field_classtype
+  | Field_jkind
 
 type field_desc = { name: string; kind: field_kind }
 

@@ -339,6 +339,8 @@ let init_shape id modl =
         :: init_shape_struct env rem
     | Sig_class_type _ :: rem ->
         init_shape_struct env rem
+    | Sig_jkind (id, jkdecl, _) :: rem ->
+        init_shape_struct (Env.add_jkind ~check:false id jkdecl env) rem
   in
   try
     Ok(undefined_location modl.mod_loc,

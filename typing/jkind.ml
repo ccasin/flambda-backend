@@ -1980,6 +1980,12 @@ module Jkind_desc = struct
 
   let get_const t = Base_and_axes.map_option_layout Layout.get_const t
 
+  let abstract path =
+    { base = Kconstr path;
+      mod_bounds = Mod_bounds.max;
+      with_bounds = No_with_bounds
+    }
+
   module Debug_printers = struct
     let t ppf t =
       Base_and_axes.debug_print
@@ -2194,6 +2200,9 @@ let of_type_decl_default ~context ~transl_type ~default
   match of_type_decl ~context ~transl_type decl with
   | Some (t, _) -> t
   | None -> default
+
+let of_path ~why path =
+  fresh_jkind (Jkind_desc.abstract path) ~annotation:None ~why
 
 let has_mutable_label lbls =
   List.exists
@@ -2648,6 +2657,12 @@ module Format_history = struct
     | Array_element -> fprintf ppf "it's the type of an array element"
     | Old_style_unboxed_type -> fprintf ppf "it's an [@@@@unboxed] type"
 
+  let format_abstract_creation_reason ppf :
+      History.abstract_creation_reason -> unit = function
+    | Strengthening (id, p) ->
+      fprintf ppf "it's the abstract jkind %s strengthened with the module %a"
+        (Ident.name id) !printtyp_path p
+
   let rec format_annotation_context :
       type l r. _ -> (l * r) History.annotation_context -> unit =
    fun ppf -> function
@@ -2821,6 +2836,8 @@ module Format_history = struct
     | Concrete_creation concrete -> format_concrete_creation_reason ppf concrete
     | Concrete_legacy_creation concrete ->
       format_concrete_legacy_creation_reason ppf concrete
+    | Abstract_creation_reason abstract ->
+      format_abstract_creation_reason ppf abstract
     | Primitive id -> fprintf ppf "it is the primitive type %s" (Ident.name id)
     | Unboxed_primitive id ->
       fprintf ppf "it is the unboxed version of the primitive type %s"
@@ -3550,6 +3567,11 @@ module Debug_printers = struct
     | Unboxed_tuple -> fprintf ppf "Unboxed_tuple"
     | Unboxed_record -> fprintf ppf "Unboxed_record"
 
+  let abstract_creation_reason ppf : History.abstract_creation_reason -> _ =
+    function
+    | Strengthening (id, p) ->
+      fprintf ppf "Strengthening (%s,%a)" (Ident.name id) !printtyp_path p
+
   let creation_reason ppf : History.creation_reason -> unit = function
     | Annotated (ctx, loc) ->
       fprintf ppf "Annotated (%a,%a)" annotation_context ctx Location.print_loc
@@ -3574,6 +3596,9 @@ module Debug_printers = struct
     | Concrete_legacy_creation concrete ->
       fprintf ppf "Concrete_legacy_creation %a" concrete_legacy_creation_reason
         concrete
+    | Abstract_creation_reason abstract ->
+      fprintf ppf "Abstract_creation_reason %a" abstract_creation_reason
+        abstract
     | Primitive id -> fprintf ppf "Primitive %s" (Ident.name id)
     | Unboxed_primitive id -> fprintf ppf "Unboxed_primitive %s" (Ident.name id)
     | Imported -> fprintf ppf "Imported"
