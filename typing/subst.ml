@@ -135,8 +135,8 @@ end = struct
       Jkind.of_const
         const_jkind
         ~quality
-        ~annotation:(Some { pjkind_loc = Location.none;
-                            pjkind_desc = Abbreviation builtin.name })
+        ~annotation:(Some { pjka_loc = Location.none;
+                            pjka_desc = Abbreviation builtin.name })
         ~why:Jkind.History.Imported)
 
   let best_builtins : (allowed * disallowed) builtins = make_builtins Best

@@ -975,8 +975,8 @@ and signature_item i ppf x =
       payload i ppf arg
   | Psig_attribute a ->
       attribute i ppf "Psig_attribute" a
-  | Psig_kind (name, jkind) ->
-      line i ppf "Psig_kind \"%s\"\n" name.txt;
+  | Psig_jkind (name, jkind) ->
+      line i ppf "Psig_jkind \"%s\"\n" name.txt;
       option i jkind_annotation ppf jkind
   )
 
@@ -1115,7 +1115,7 @@ and structure_item i ppf x =
       payload i ppf arg
   | Pstr_attribute a ->
       attribute i ppf "Pstr_attribute" a
-  | Pstr_kind (name, jkind) ->
+  | Pstr_jkind (name, jkind) ->
       line i ppf "Pstr_kind \"%s\"\n" name.txt;
       option i jkind_annotation ppf jkind
   )

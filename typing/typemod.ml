@@ -1289,8 +1289,12 @@ and approx_sig_items env ssg=
             ]
           ) decls [rem]
           |> List.flatten
-      | Psig_kind _ ->
-          Misc.fatal_error "kind_ not supported!"
+      | Psig_jkind sdecl ->
+          let id, env, decl = Typedecl.transl_jkind_decl env sdecl in
+          let item = Sig_jkind(id, decl.jkind_jkind, Exported) in
+          let rem = approx_sig_items env srem in
+          Sig_jkind (id, decl, Exported) :: rem
+         (* XXX some kind of recursive check here? *)
       | _ ->
           approx_sig_items env srem
 
@@ -2091,7 +2095,7 @@ and transl_signature env {psg_items; psg_modalities; psg_loc} =
         mksig (Tsig_attribute attr) env loc, [], env
     | Psig_extension (ext, _attrs) ->
         raise (Error_forward (Builtin_attributes.error_of_extension ext))
-    | Psig_kind _ ->
+    | Psig_jkind _ ->
         Misc.fatal_error "kind_ not supported!"
   in
   let rec transl_sig env sig_items sig_type = function
@@ -3458,8 +3462,11 @@ and type_structure ?(toplevel = None) funct_body anchor env sstr =
         || not (Warnings.is_active (Misplaced_attribute "")) then
           Builtin_attributes.mark_alert_used x;
         Tstr_attribute x, [], shape_map, env
-    | Pstr_kind _ ->
-        Misc.fatal_error "kind_ not supported!"
+    | Pstr_jkind x ->
+        let id, env, decl = Typedecl.transl_jkind_decl env x in
+        let shape_map = Shape.Map.add_jkind shape_map id jkind in
+        let item = Sig_jkind(id, decl, Exported) in
+        Tstr_jkind decl, [item], shape_map, env
   in
   let toplevel_sig = Option.value toplevel ~default:[] in
   let rec type_struct env shape_map sstr str_acc sig_acc

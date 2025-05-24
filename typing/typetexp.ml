@@ -1094,7 +1094,7 @@ and transl_type_var env ~policy ~row_context attrs loc name jkind_annot_opt =
       match constrain_type_jkind env ty jkind with
       | Ok () -> Some jkind_annot
       | Error err ->
-          raise (Error(jkind_annot.pjkind_loc, env, Bad_jkind_annot (ty, err)))
+          raise (Error(jkind_annot.pjka_loc, env, Bad_jkind_annot (ty, err)))
   in
   Ttyp_var (Some name, jkind_annot), ty
 
@@ -1139,7 +1139,7 @@ and transl_type_alias env ~row_context ~policy mode attrs styp_loc styp name_opt
           begin match constrain_type_jkind env t jkind with
           | Ok () -> ()
           | Error err ->
-            raise (Error(jkind_annot.pjkind_loc, env, Bad_jkind_annot(t, err)))
+            raise (Error(jkind_annot.pjka_loc, env, Bad_jkind_annot(t, err)))
           end;
           Some jkind_annot
         in
@@ -1187,13 +1187,13 @@ and transl_type_alias env ~row_context ~policy mode attrs styp_loc styp name_opt
         | Some jkind_annot -> jkind_annot
       in
       let jkind =
-        jkind_of_annotation (Type_wildcard jkind_annot.pjkind_loc)
+        jkind_of_annotation (Type_wildcard jkind_annot.pjka_loc)
           attrs jkind_annot
       in
       begin match constrain_type_jkind env cty_expr jkind with
       | Ok () -> ()
       | Error err ->
-        raise (Error(jkind_annot.pjkind_loc, env,
+        raise (Error(jkind_annot.pjka_loc, env,
                      Bad_jkind_annot(cty_expr, err)))
       end;
       cty, Some jkind_annot

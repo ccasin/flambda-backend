@@ -1720,7 +1720,7 @@ module Const = struct
       type l r.
       (l * r) Context_with_transl.t -> Parsetree.jkind_annotation -> (l * r) t =
    fun context jkind ->
-    match jkind.pjkind_desc with
+    match jkind.pjka_desc with
     | Abbreviation name ->
       (* CR layouts v2.8: move this to predef *)
       (match name with
@@ -1740,7 +1740,7 @@ module Const = struct
       | "vec128" -> Builtin.vec128.jkind
       | "immutable_data" -> Builtin.immutable_data.jkind
       | "mutable_data" -> Builtin.mutable_data.jkind
-      | _ -> raise ~loc:jkind.pjkind_loc (Unknown_jkind jkind))
+      | _ -> raise ~loc:jkind.pjka_loc (Unknown_jkind jkind))
       |> allow_left |> allow_right
     | Mod (base, modifiers) ->
       let base = of_user_written_annotation_unchecked_level context base in
@@ -1800,7 +1800,7 @@ module Const = struct
               ~relevant_for_nullability:`Irrelevant ~type_expr:type_
               base.with_bounds
         })
-    | Default | Kind_of _ -> raise ~loc:jkind.pjkind_loc Unimplemented_syntax
+    | Default | Kind_of _ -> raise ~loc:jkind.pjka_loc Unimplemented_syntax
 
   (* The [annotation_context] parameter can be used to allow annotations / kinds
      in different contexts to be enabled with different extension settings.
@@ -1833,7 +1833,7 @@ module Const = struct
     let required_layouts_level = get_required_layouts_level context const in
     if not (Language_extension.is_at_least Layouts required_layouts_level)
     then
-      raise ~loc:annot.pjkind_loc
+      raise ~loc:annot.pjka_loc
         (Insufficient_level { jkind = annot; required_layouts_level });
     const
 end
@@ -1999,7 +1999,7 @@ end
 
 (* every context where this is used actually wants an [option] *)
 let mk_annot name =
-  Some Parsetree.{ pjkind_loc = Location.none; pjkind_desc = Abbreviation name }
+  Some Parsetree.{ pjka_loc = Location.none; pjka_desc = Abbreviation name }
 
 let mark_best (type l r) (t : (l * r) Types.jkind) =
   { (disallow_right t) with quality = Best }
@@ -2158,7 +2158,7 @@ let of_annotated_const ~context ~annotation ~const ~const_loc =
 
 let of_annotation_lr ~context (annot : Parsetree.jkind_annotation) =
   let const = Const.of_user_written_annotation ~context annot in
-  of_annotated_const ~annotation:(Some annot) ~const ~const_loc:annot.pjkind_loc
+  of_annotated_const ~annotation:(Some annot) ~const ~const_loc:annot.pjka_loc
     ~context
 
 let of_annotation ~context annot =
@@ -2682,6 +2682,8 @@ module Format_history = struct
     | Type_variable name -> fprintf ppf "the type variable %s" name
     | Type_wildcard loc ->
       fprintf ppf "the wildcard _ at %a" Location.print_loc_in_lowercase loc
+    | Jkind_declaration p ->
+      fprintf ppf "the declaration of the jkind %a" !printtyp_path p
     | With_error_message (_message, context) ->
       (* message gets printed in [format_flattened_history] so we ignore it here *)
       format_annotation_context ppf context
@@ -3486,6 +3488,7 @@ module Debug_printers = struct
     | Type_variable name -> fprintf ppf "Type_variable %S" name
     | Type_wildcard loc ->
       fprintf ppf "Type_wildcard (%a)" Location.print_loc loc
+    | Jkind_declaration p -> fprintf ppf "Jkind_declaration %a" Path.print p
     | With_error_message (message, context) ->
       fprintf ppf "With_error_message (%s, %a)" message annotation_context
         context

@@ -4115,6 +4115,36 @@ let check_recmod_typedecl env loc recmod_ids path decl =
      is resolved. *)
   ignore (check_kind_coherence env loc path decl)
 
+let transl_jkind_decl env
+      { pjkind_name; pjkind_manifest; pjkind_attributes; pjkind_loc=loc } =
+  let scope = Ctype.create_scope () in
+  let id = Ident.create_scoped ~scope pjkind_name.txt in
+  let uid = Uid.mk ~current_unit:(Env.get_unit_name ()) in
+  let context = Jkind.History.Jkind_declaration (Pident id) in
+  let jkind_manifest =
+    Option.map (fun annot -> Jkind.of_annotation ~context annot) pjkind_manifest
+  in
+  let shape = Shape.leaf uid in
+  let jkind_jkind : Types.jkind_declaration =
+    { jkind_manifest;
+      jkind_attributes = pjkind_attributes;
+      jkind_uid = Uid.internal_not_actually_unique;
+      jkind_loc = loc
+    }
+  in
+  let env = Env.add_jkind ~check:true ~shape id jkind_jkind env in
+  let decl : Typedtree.jkind_declaration =
+    { jkind_id = id;
+      jkind_name = pjkind_name;
+      jkind_uid = uid;
+      jkind_jkind;
+      jkind_attributes = pjkind_attributes;
+      jkind_annotation = pjkind_manifest;
+      jkind_loc = loc }
+  in
+  id,
+  env,
+  decl
 
 (**** Error report ****)
 

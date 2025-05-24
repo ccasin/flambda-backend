@@ -833,6 +833,16 @@ and extension_constructor_kind =
   | Pext_rebind of Longident.t loc
   (** [Pext_rebind(D)] re-export the constructor [D] with the new name [C] *)
 
+and jkind_declaration =
+  {
+    pjkind_name : string loc;
+    pjkind_manifest : jkind_annotation option;
+    pjkind_attributes : attributes;
+    pjkind_loc : Location.t
+  }
+  (** [kind_ name] or [kind_ name = k] *)
+
+
 (** {1 Class language} *)
 (** {2 Type expressions for the class language} *)
 
@@ -1094,8 +1104,7 @@ and signature_item_desc =
       (** [class type ct1 = ... and ... and ctn = ...] *)
   | Psig_attribute of attribute  (** [[\@\@\@id]] *)
   | Psig_extension of extension * attributes  (** [[%%id]] *)
-  | Psig_kind of string loc * jkind_annotation option
-      (** [kind_ name] or [kind_ name = k] *)
+  | Psig_jkind of jkind_declaration (** [kind_ name] or [kind_ name = k] *)
 
 and module_declaration =
     {
@@ -1259,8 +1268,7 @@ and structure_item_desc =
   | Pstr_include of include_declaration  (** [include ME] *)
   | Pstr_attribute of attribute  (** [[\@\@\@id]] *)
   | Pstr_extension of extension * attributes  (** [[%%id]] *)
-  | Pstr_kind of string loc * jkind_annotation option
-      (** [kind_ name] or [kind_ name = k] *)
+  | Pstr_jkind of jkind_declaration (** [kind_ name] or [kind_ name = k] *)
 
 and value_constraint =
   | Pvc_constraint of {
@@ -1308,8 +1316,8 @@ and jkind_annotation_desc =
   | Product of jkind_annotation list
 
 and jkind_annotation =
-  { pjkind_loc : Location.t
-  ; pjkind_desc : jkind_annotation_desc
+  { pjka_loc : Location.t
+  ; pjka_desc : jkind_annotation_desc
   }
 
 (** {1 Toplevel} *)

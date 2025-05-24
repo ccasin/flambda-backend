@@ -1446,13 +1446,15 @@ and sig_include ctxt f incl moda =
   include_ ctxt f ~contents:module_type incl;
   optional_space_atat_modalities f moda
 
-and kind_decl ctxt f name jkind =
-  match jkind with
+and jkind_decl ctxt f name jkind attrs =
+  begin match jkind with
   | None -> pp f "@[<hov2>kind_@ %a@]" string_loc name
   | Some jkind ->
     pp f "@[<hov2>kind_@ %a@ =@ %a@]"
       string_loc name
       (jkind_annotation ctxt) jkind
+  end;
+  item_attributes ctxt f attrs
 
 
 and module_type_with_optional_modes ctxt f (mty, mm) =
@@ -1640,8 +1642,8 @@ and signature_item ctxt f x : unit =
   | Psig_extension(e, a) ->
       item_extension ctxt f e;
       item_attributes ctxt f a
-  | Psig_kind (name, jkind) ->
-      kind_decl ctxt f name jkind
+  | Psig_jkind (name, jkind, attrs) ->
+      jkind_decl ctxt f name jkind
 
 and module_expr ctxt f x =
   if x.pmod_attributes <> [] then
@@ -2000,8 +2002,8 @@ and structure_item ctxt f x =
   | Pstr_extension(e, a) ->
       item_extension ctxt f e;
       item_attributes ctxt f a
-  | Pstr_kind (name, jkind) ->
-      kind_decl ctxt f name jkind
+  | Pstr_jkind (name, jkind, attrs) ->
+      jkind_decl ctxt f name jkind attrs
 
 (* Don't just use [core_type] because we do not want parens around params
    with jkind annotations *)

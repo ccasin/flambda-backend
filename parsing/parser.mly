@@ -1763,9 +1763,9 @@ structure_item:
           Pstr_extension ($1, add_docs_attrs docs $2) }
     | floating_attribute
         { Pstr_attribute $1 }
-    | kind_decl
-        { let name, jkind = $1 in
-          Pstr_kind (name, jkind)
+    | jkind_decl
+        { let name, jkind, attributes = $1 in
+          Pstr_jkind (name, jkind, attributes)
         })
   | wrap_mkstr_ext(
       primitive_declaration
@@ -2052,9 +2052,9 @@ signature_item:
   | mksig(
       floating_attribute
         { Psig_attribute $1 }
-     | kind_decl
-        { let name, jkind = $1 in
-          Psig_kind (name, jkind)
+     | jkind_decl
+        { let name, jkind, attributes = $1 in
+          Psig_jkind (name, jkind, attributes)
         }
     )
     { $1 }
@@ -3989,11 +3989,20 @@ jkind_constraint:
   COLON jkind_annotation { $2 }
 ;
 
-kind_decl:
-  | KIND name=mkrhs(LIDENT) EQUAL jkind=jkind_annotation
-      { (name, Some jkind) }
-  | KIND name=mkrhs(LIDENT)
-      { (name, None) }
+%inline jkind_manifest:
+  | /* empty */ { None }
+  | EQUAL jkind=jkind_annotation { Some jkind }
+;
+
+jkind_decl:
+  KIND
+  attrs1=attributes
+  name=mkrhs(LIDENT)
+  jkind=jkind_manifest
+  attrs2=post_item_attributes
+    {
+      let attrs = attrs1 @ attrs2 in
+      (name, jkind, attrs) }
 ;
 
 %inline type_param_with_jkind:

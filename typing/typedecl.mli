@@ -49,6 +49,10 @@ val transl_with_constraint:
 val transl_package_constraint:
   loc:Location.t -> type_expr -> Types.type_declaration
 
+val transl_jkind_decl:
+  Env.t -> Parsetree.jkind_declaration ->
+  Ident.t * Env.t * Typedtree.jkind_declaration
+
 val abstract_type_decl:
   injective:bool ->
   jkind:jkind_l ->
