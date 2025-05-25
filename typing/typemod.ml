@@ -1291,9 +1291,8 @@ and approx_sig_items env ssg=
           |> List.flatten
       | Psig_jkind sdecl ->
           let id, env, decl = Typedecl.transl_jkind_decl env sdecl in
-          let item = Sig_jkind(id, decl.jkind_jkind, Exported) in
           let rem = approx_sig_items env srem in
-          Sig_jkind (id, decl, Exported) :: rem
+          Sig_jkind (id, decl.jkind_jkind, Exported) :: rem
          (* XXX some kind of recursive check here? *)
       | _ ->
           approx_sig_items env srem
@@ -3464,8 +3463,8 @@ and type_structure ?(toplevel = None) funct_body anchor env sstr =
         Tstr_attribute x, [], shape_map, env
     | Pstr_jkind x ->
         let id, env, decl = Typedecl.transl_jkind_decl env x in
-        let shape_map = Shape.Map.add_jkind shape_map id jkind in
-        let item = Sig_jkind(id, decl, Exported) in
+        let shape_map = Shape.Map.add_jkind shape_map id decl.jkind_uid in
+        let item = Sig_jkind(id, decl.jkind_jkind, Exported) in
         Tstr_jkind decl, [item], shape_map, env
   in
   let toplevel_sig = Option.value toplevel ~default:[] in

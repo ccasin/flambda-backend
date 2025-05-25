@@ -1764,9 +1764,7 @@ structure_item:
     | floating_attribute
         { Pstr_attribute $1 }
     | jkind_decl
-        { let name, jkind, attributes = $1 in
-          Pstr_jkind (name, jkind, attributes)
-        })
+        { Pstr_jkind $1 })
   | wrap_mkstr_ext(
       primitive_declaration
         { pstr_primitive $1 }
@@ -2053,9 +2051,7 @@ signature_item:
       floating_attribute
         { Psig_attribute $1 }
      | jkind_decl
-        { let name, jkind, attributes = $1 in
-          Psig_jkind (name, jkind, attributes)
-        }
+        { Psig_jkind $1 }
     )
     { $1 }
   | wrap_mksig_ext(
@@ -3982,7 +3978,7 @@ reverse_product_jkind :
     { jkind :: jkinds }
 
 jkind_annotation: (* : jkind_annotation *)
-  jkind_desc { { pjkind_loc = make_loc $sloc; pjkind_desc = $1 } }
+  jkind_desc { { pjka_loc = make_loc $sloc; pjka_desc = $1 } }
 ;
 
 jkind_constraint:
@@ -3997,12 +3993,14 @@ jkind_constraint:
 jkind_decl:
   KIND
   attrs1=attributes
-  name=mkrhs(LIDENT)
-  jkind=jkind_manifest
+  pjkind_name=mkrhs(LIDENT)
+  pjkind_manifest=jkind_manifest
   attrs2=post_item_attributes
     {
-      let attrs = attrs1 @ attrs2 in
-      (name, jkind, attrs) }
+      let pjkind_attributes = attrs1 @ attrs2 in
+      let pjkind_loc = make_loc $sloc in
+      { pjkind_name; pjkind_manifest; pjkind_attributes; pjkind_loc }
+    }
 ;
 
 %inline type_param_with_jkind:

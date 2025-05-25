@@ -188,6 +188,17 @@ let extension_constructors ~loc env ~mark  subst id ext1 ext2 =
   | Some err ->
       Error Error.(Core(Extension_constructors(diff ext1 ext2 err)))
 
+(* Inclusion between jkind declarations *)
+let jkind_declarations ~loc env ~mark subst id decl1 decl2 =
+  let mark = mark_positive mark in
+  if mark then
+    Env.mark_jkind_used decl1.jkind_uid;
+  let decl2 = Subst.jkind_declaration subst decl2 in
+  match Includecore.jkind_declarations ~loc env ~mark id decl1 decl2 with
+  | None -> Ok Tcoerce_none
+  | Some err ->
+     Error Error.(Core(Jkind_declarations (diff decl1 decl2 err)))
+
 (* Inclusion between class declarations *)
 
 let class_type_declarations ~loc env subst decl1 decl2 =
@@ -899,6 +910,13 @@ and signature_components :
               Shape.Map.add_class_type_proj shape_map id1 orig_shape
             in
             id1, item, shape_map, false
+        | Sig_jkind (id1, jd1, _), Sig_jkind (_id2, jd2, _) ->
+           let item =
+             jkind_declarations ~loc env ~mark subst id1 jd1 jd2
+           in
+           let item = mark_error_as_unrecoverable item in
+           let shape_map = Shape.Map.add_jkind_proj shape_map id1 orig_shape in
+           id1, item, shape_map, false
         | _ ->
             assert false
       in

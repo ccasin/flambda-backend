@@ -619,6 +619,7 @@ and signature_item_desc =
   | Tsig_class of class_description list
   | Tsig_class_type of class_type_declaration list
   | Tsig_attribute of attribute
+  | Tsig_jkind of jkind_declaration
 
 and module_declaration =
     {

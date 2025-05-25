@@ -353,7 +353,7 @@ let iter_on_occurrences
       | Tsig_value _ | Tsig_type _ | Tsig_typesubst _ | Tsig_exception _
       | Tsig_module _ | Tsig_recmodule _ | Tsig_modtype _ | Tsig_modtypesubst _
       | Tsig_open _ | Tsig_include _ | Tsig_class _ | Tsig_class_type _
-      | Tsig_attribute _ -> ());
+      | Tsig_attribute _ | Tsig_jkind _ -> ());
       default_iterator.signature_item sub sig_item);
 
   structure_item =

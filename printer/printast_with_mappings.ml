@@ -527,8 +527,8 @@ and jkind_annotation_opt i ppf jkind =
   | Some jkind -> jkind_annotation (i+1) ppf jkind
 
 and jkind_annotation i ppf (jkind : jkind_annotation) =
-  line i ppf "jkind %a\n" fmt_location jkind.pjkind_loc;
-  match jkind.pjkind_desc with
+  line i ppf "jkind %a\n" fmt_location jkind.pjka_loc;
+  match jkind.pjka_desc with
   | Default -> line i ppf "Default\n"
   | Abbreviation jkind ->
       line i ppf "Abbreviation \"%s\"\n" jkind
@@ -612,6 +612,15 @@ and type_declaration i ppf x =
   line i ppf "ptype_manifest =\n";
   option (i+1) core_type ppf x.ptype_manifest
   )
+
+and jkind_declaration i ppf
+      { pjkind_name; pjkind_manifest; pjkind_attributes; pjkind_loc } =
+  line i ppf "jkind_declaration %a %a\n" fmt_string_loc pjkind_name
+       fmt_location pjkind_loc;
+  attributes i ppf pjkind_attributes;
+  let i = i+1 in
+  line i ppf "pjkind_manifest =\n";
+  option (i+1) jkind_annotation ppf pjkind_manifest
 
 and attribute i ppf k a =
   line i ppf "%s \"%s\"\n" k a.attr_name.txt;
@@ -975,9 +984,10 @@ and signature_item i ppf x =
       payload i ppf arg
   | Psig_attribute a ->
       attribute i ppf "Psig_attribute" a
-  | Psig_jkind (name, jkind) ->
-      line i ppf "Psig_jkind \"%s\"\n" name.txt;
-      option i jkind_annotation ppf jkind
+  | Psig_jkind jd ->
+      line i ppf "Psig_jkind";
+      jkind_declaration i ppf jd
+
   )
 
 and modtype_declaration i ppf = function
@@ -1115,9 +1125,9 @@ and structure_item i ppf x =
       payload i ppf arg
   | Pstr_attribute a ->
       attribute i ppf "Pstr_attribute" a
-  | Pstr_jkind (name, jkind) ->
-      line i ppf "Pstr_kind \"%s\"\n" name.txt;
-      option i jkind_annotation ppf jkind
+  | Pstr_jkind jd ->
+      line i ppf "Pstr_kind";
+      jkind_declaration i ppf jd
   )
 
 and module_declaration i ppf pmd =

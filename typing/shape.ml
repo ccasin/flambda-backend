@@ -509,4 +509,10 @@ module Map = struct
   let add_class_type_proj t id shape =
     let item = Item.class_type id in
     Item.Map.add item (proj shape item) t
+
+  let add_jkind t id uid = Item.Map.add (Item.jkind id) (leaf uid) t
+  let add_jkind_proj t id shape =
+    let item = Item.jkind id in
+    Item.Map.add item (proj shape item) t
+
 end

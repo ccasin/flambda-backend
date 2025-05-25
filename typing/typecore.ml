@@ -4242,6 +4242,7 @@ and is_nonexpansive_mod mexp =
                 te.tyext_constructors
           | Tstr_class _ -> false (* could be more precise *)
           | Tstr_attribute _ -> true
+          | Tstr_jkind _ -> true
         )
         str.str_items
   | Tmod_apply _ | Tmod_apply_unit _ -> false
