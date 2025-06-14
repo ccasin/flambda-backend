@@ -90,18 +90,18 @@ module Example = struct
                          ; ptype_loc = loc
                          ; ptype_jkind_annotation =
                              Some
-                               { pjkind_loc = loc;
-                                 pjkind_desc =  Default;
+                               { pjka_loc = loc;
+                                 pjka_desc =  Default;
                                }
                          }
   let tyvar            = "no_tyvars_require_extensions"
   let tyvar_of_name    = "no_tyvars_require_extensions"
   let jkind_annotation : jkind_annotation =
-    { pjkind_loc = loc;
-      pjkind_desc =
+    { pjka_loc = loc;
+      pjka_desc =
         With
-          ( { pjkind_loc = loc;
-              pjkind_desc = Abbreviation "value";
+          ( { pjka_loc = loc;
+              pjka_desc = Abbreviation "value";
             }
           , core_type
           , modalities

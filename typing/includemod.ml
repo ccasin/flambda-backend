@@ -53,6 +53,8 @@ module Error = struct
         (class_type_declaration, Ctype.class_match_failure list) diff
     | Class_declarations of
         (class_declaration, Ctype.class_match_failure list) diff
+    | Jkind_declarations of
+        (jkind_declaration, Includecore.jkind_mismatch) diff
 
   type core_module_type_symptom =
     | Not_an_alias
@@ -194,7 +196,7 @@ let jkind_declarations ~loc env ~mark subst id decl1 decl2 =
   if mark then
     Env.mark_jkind_used decl1.jkind_uid;
   let decl2 = Subst.jkind_declaration subst decl2 in
-  match Includecore.jkind_declarations ~loc env ~mark id decl1 decl2 with
+  match Includecore.jkind_declarations ~loc env (Ident.name id) decl1 decl2 with
   | None -> Ok Tcoerce_none
   | Some err ->
      Error Error.(Core(Jkind_declarations (diff decl1 decl2 err)))

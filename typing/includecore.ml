@@ -305,6 +305,10 @@ type type_mismatch =
   | Jkind of Jkind.Violation.t
   | Unsafe_mode_crossing of unsafe_mode_crossing_mismatch
 
+type jkind_mismatch =
+  | Manifest_missing
+  | Manifest_mismatch
+
 let report_modality_sub_error first second ppf e =
   let print_modality id ppf m =
     Printtyp.modality ~id:(fun ppf -> Format.pp_print_string ppf id) ppf m
@@ -664,6 +668,15 @@ let report_type_mismatch first second decl env ppf err =
       (fun ppf (first, second, mismatch) ->
          report_unsafe_mode_crossing_mismatch first second ppf mismatch)
       (first, second, mismatch)
+
+let report_jkind_mismatch first second _env ppf err =
+  let pr fmt = Format.fprintf ppf fmt in
+  pr "@ ";
+  match err with
+  | Manifest_missing ->
+      pr "The %s is abstract, but %s is not." first second
+  | Manifest_mismatch ->
+      pr "Their definitions are not equal."
 
 let compare_unsafe_mode_crossing ~env umc1 umc2 =
   match umc1, umc2 with
@@ -1509,3 +1522,22 @@ let extension_constructors ~loc env ~mark id ext1 ext2 =
       match ext1.ext_private, ext2.ext_private with
       | Private, Public -> Some Constructor_privacy
       | _, _ -> None
+
+(* Inclusion between jkind declarations *)
+let jkind_declarations ~loc _env name
+      (decl1 : Types.jkind_declaration) (decl2 : Types.jkind_declaration) =
+  Builtin_attributes.check_alerts_inclusion
+    ~def:decl1.jkind_loc
+    ~use:decl2.jkind_loc
+    loc
+    decl1.jkind_attributes decl2.jkind_attributes
+    name;
+  match decl1.jkind_manifest, decl2.jkind_manifest with
+  | _, None -> None
+  | None, Some _ ->
+    (* XXX do I need the weird path case here? *)
+    Some Manifest_missing
+  | Some k1, Some k2 ->
+    if Jkind.equal k1 k2
+    then None
+    else Some Manifest_mismatch

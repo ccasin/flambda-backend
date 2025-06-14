@@ -163,6 +163,7 @@ val has_local_constraints: t -> bool
 val mark_value_used: Uid.t -> unit
 val mark_module_used: Uid.t -> unit
 val mark_type_used: Uid.t -> unit
+val mark_jkind_used: Uid.t -> unit
 
 type constructor_usage = Positive | Pattern | Exported_private | Exported
 val mark_constructor_used:

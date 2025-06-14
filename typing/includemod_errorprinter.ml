@@ -659,6 +659,18 @@ let core env id x =
         !Oprint.out_sig_item t2
         (Includeclass.report_error Type_scheme) symptom
         Printtyp.Conflicts.print_explanations
+  | Err.Jkind_declarations diff ->
+      Format.dprintf "@[<v>@[<hv>%s:@;<1 2>%a@ %s@;<1 2>%a@]%a%a%t@]"
+        "Kind declarations do not match"
+        !Oprint.out_sig_item
+        (Printtyp.tree_of_jkind_declaration id diff.got)
+        "is not included in"
+        !Oprint.out_sig_item
+        (Printtyp.tree_of_jkind_declaration id diff.expected)
+        (Includecore.report_jkind_mismatch
+           "the first" "the second" env) diff.symptom
+        show_locs (diff.got.jkind_loc, diff.expected.jkind_loc)
+        Printtyp.Conflicts.print_explanations
 
 let missing_field ppf item =
   let id, loc, kind =  Includemod.item_ident_name item in

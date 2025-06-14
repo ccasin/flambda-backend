@@ -173,6 +173,9 @@ val extension_only_constructor:
      A of float
 *)
 
+val tree_of_jkind_declaration:
+    Ident.t -> jkind_declaration -> out_sig_item
+
 val tree_of_module:
     Ident.t -> ?ellipsis:bool -> module_type -> rec_status -> out_sig_item
 val modtype: formatter -> module_type -> unit
