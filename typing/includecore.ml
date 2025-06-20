@@ -154,9 +154,9 @@ let value_descriptions ~loc env name
              let ty2, mode_l2, mode_y2, _ = Ctype.instance_prim p2 vd2.val_type in
              Option.iter (Mode.Locality.equate_exn loc) mode_l2;
              Option.iter (Mode.Yielding.equate_exn yield) mode_y2;
-             try 
+             try
                Ctype.moregeneral env true ty1 ty2
-             with Ctype.Moregen err -> 
+             with Ctype.Moregen err ->
                raise (Dont_match (Type err))
            ) yielding
          ) locality;
@@ -1524,7 +1524,7 @@ let extension_constructors ~loc env ~mark id ext1 ext2 =
       | _, _ -> None
 
 (* Inclusion between jkind declarations *)
-let jkind_declarations ~loc _env name
+let jkind_declarations ~loc env name
       (decl1 : Types.jkind_declaration) (decl2 : Types.jkind_declaration) =
   Builtin_attributes.check_alerts_inclusion
     ~def:decl1.jkind_loc
@@ -1538,6 +1538,6 @@ let jkind_declarations ~loc _env name
     (* XXX do I need the weird path case here? *)
     Some Manifest_missing
   | Some k1, Some k2 ->
-    if Jkind.equal k1 k2
+    if Jkind.equal env k1 k2
     then None
     else Some Manifest_mismatch

@@ -130,7 +130,6 @@ COMPILERLIBS_SOURCES=\
   typing/zero_alloc.ml \
   typing/types.ml \
   typing/oprint.ml \
-  typing/jkind.ml \
   typing/typedtree.ml \
   typing/btype.ml \
   typing/subst.ml \
@@ -140,6 +139,7 @@ COMPILERLIBS_SOURCES=\
   file_formats/cmi_format.ml \
   typing/persistent_env.ml \
   typing/env.ml \
+  typing/jkind.ml \
   typing/shape_reduce.ml \
   typing/typedtree.ml \
   lambda/debuginfo.ml \

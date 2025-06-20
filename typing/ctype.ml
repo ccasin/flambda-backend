@@ -2894,8 +2894,9 @@ let local_non_recursive_abbrev uenv p ty =
 
    They carry redundant information but are added to save two calls to
    [get_desc] which are usually performed already at the call site. *)
-let unify_univar t1 t2 jkind1 jkind2 pairs =
-  if not (Jkind.equal jkind1 jkind2) then raise Cannot_unify_universal_variables;
+let unify_univar env t1 t2 jkind1 jkind2 pairs =
+  if not (Jkind.equal env jkind1 jkind2) then
+    raise Cannot_unify_universal_variables;
   let rec inner t1 t2 = function
     (cl1, cl2) :: rem ->
       let find_univ t cl =
@@ -2919,8 +2920,8 @@ let unify_univar t1 t2 jkind1 jkind2 pairs =
 
 (* The same as [unify_univar], but raises the appropriate exception instead of
    [Cannot_unify_universal_variables] *)
-let unify_univar_for tr_exn t1 t2 jkind1 jkind2 univar_pairs =
-  try unify_univar t1 t2 jkind1 jkind2 univar_pairs
+let unify_univar_for tr_exn env t1 t2 jkind1 jkind2 univar_pairs =
+  try unify_univar env t1 t2 jkind1 jkind2 univar_pairs
   with Cannot_unify_universal_variables -> raise_unexplained_for tr_exn
 
 (* Test the occurrence of free univars in a type *)
@@ -3367,7 +3368,7 @@ let rec mcomp type_pairs env t1 t2 =
                  t1 tl1 t2 tl2 (mcomp type_pairs env)
              with Escape _ -> raise Incompatible)
         | (Tunivar {jkind=jkind1}, Tunivar {jkind=jkind2}, _, _) ->
-            (try unify_univar t1' t2' jkind1 jkind2 !univar_pairs
+            (try unify_univar env t1' t2' jkind1 jkind2 !univar_pairs
              with Cannot_unify_universal_variables -> raise Incompatible)
         | (_, _, _, _) ->
             raise Incompatible
@@ -3602,7 +3603,7 @@ let add_jkind_equation ~reason uenv destination jkind1 =
             (* CR layouts v2.8: We might be able to do better here. *)
             match Jkind.try_allow_r jkind, Jkind.try_allow_r decl.type_jkind with
             | Some jkind, Some decl_jkind when
-                   not (Jkind.equal jkind decl_jkind) ->
+                   not (Jkind.equal env jkind decl_jkind) ->
                let refined_decl = { decl with type_jkind = Jkind.disallow_right jkind } in
                set_env uenv (Env.add_local_constraint p refined_decl env)
             | _ -> ()
@@ -3847,7 +3848,7 @@ let rec unify uenv t1 t2 =
     | (_, Tvar _) ->
         if unify1_var uenv t2 t1 then () else unify2 uenv t1 t2
     | (Tunivar { jkind = k1 }, Tunivar { jkind = k2 }) ->
-        unify_univar_for Unify t1 t2 k1 k2 !univar_pairs;
+        unify_univar_for Unify (get_env uenv) t1 t2 k1 k2 !univar_pairs;
         update_level_for Unify (get_env uenv) (get_level t1) t2;
         update_scope_for Unify (get_scope t1) t2;
         link_type t1 t2
@@ -3934,7 +3935,7 @@ and unify3 uenv t1 t1' t2 t2' =
 
   begin match (d1, d2) with (* handle vars and univars specially *)
     (Tunivar { jkind = k1 }, Tunivar { jkind = k2 }) ->
-      unify_univar_for Unify t1' t2' k1 k2 !univar_pairs;
+      unify_univar_for Unify (get_env uenv) t1' t2' k1 k2 !univar_pairs;
       link_type t1' t2'
   | (Tvar { jkind }, _) ->
       unify3_var uenv jkind t1' t2 t2'
@@ -5174,7 +5175,7 @@ let rec moregen inst_nongen variance type_pairs env t1 t2 =
               enter_poly_for Moregen env univar_pairs t1 tl1 t2 tl2
                 (moregen inst_nongen variance type_pairs env)
           | (Tunivar {jkind=k1}, Tunivar {jkind=k2}) ->
-              unify_univar_for Moregen t1' t2' k1 k2 !univar_pairs
+              unify_univar_for Moregen env t1' t2' k1 k2 !univar_pairs
           | (_, _) ->
               raise_unexplained_for Moregen
         end
@@ -5261,7 +5262,7 @@ and moregen_row inst_nongen variance type_pairs env row1 row2 =
   let md1 = get_desc rm1 (* This lets us undo a following [link_type] *) in
   begin match md1, get_desc rm2 with
     Tunivar {jkind=k1}, Tunivar {jkind=k2} ->
-      unify_univar_for Moregen rm1 rm2 k1 k2 !univar_pairs
+      unify_univar_for Moregen env rm1 rm2 k1 k2 !univar_pairs
   | Tunivar _, _ | _, Tunivar _ ->
       raise_unexplained_for Moregen
   | _ when static_row row1 -> ()
@@ -5486,7 +5487,7 @@ let all_distinct_vars_with_original_jkinds env vars =
          tys := TypeSet.add ty !tys;
          match get_desc ty with
          | Tvar { jkind = inferred_jkind } ->
-           if Jkind.equate inferred_jkind original_jkind
+           if Jkind.equate env inferred_jkind original_jkind
            then All_good
            else Jkind_mismatch { original_jkind; inferred_jkind; ty }
          | _ -> Unification_failure { name; ty }
@@ -5532,7 +5533,7 @@ let expand_head_rigid env ty =
   let ty' = expand_head env ty in
   rigid_variants := old; ty'
 
-let eqtype_subst type_pairs subst t1 k1 t2 k2 ~do_jkind_check =
+let eqtype_subst env type_pairs subst t1 k1 t2 k2 ~do_jkind_check =
   if List.exists
       (fun (t,t') ->
         let found1 = eq_type t1 t in
@@ -5542,7 +5543,7 @@ let eqtype_subst type_pairs subst t1 k1 t2 k2 ~do_jkind_check =
       !subst
   then ()
   else begin
-    if do_jkind_check && not (Jkind.equal k1 k2)
+    if do_jkind_check && not (Jkind.equal env k1 k2)
       then raise_for Equality (Unequal_var_jkinds (t1, k1, t2, k2));
     subst := (t1, t2) :: !subst;
     TypePairs.add type_pairs (t1, t2)
@@ -5569,11 +5570,11 @@ let rec eqtype rename type_pairs subst env ~do_jkind_check t1 t2 =
   try
     match (get_desc t1, get_desc t2) with
       (Tvar { jkind = k1 }, Tvar { jkind = k2 }) when rename ->
-        eqtype_subst type_pairs subst t1 k1 t2 k2 ~do_jkind_check
+        eqtype_subst env type_pairs subst t1 k1 t2 k2 ~do_jkind_check
     | (Tconstr (p1, [], _), Tconstr (p2, [], _)) when Path.same p1 p2 ->
         ()
     | (Tof_kind k1, Tof_kind k2) ->
-      if not (Jkind.equal k1 k2)
+      if not (Jkind.equal env k1 k2)
       then raise_for Equality (Unequal_tof_kind_jkinds (k1, k2))
     | _ ->
         let t1' = expand_head_rigid env t1 in
@@ -5584,7 +5585,7 @@ let rec eqtype rename type_pairs subst env ~do_jkind_check t1 t2 =
           TypePairs.add type_pairs (t1', t2');
           match (get_desc t1', get_desc t2') with
             (Tvar { jkind = k1 }, Tvar { jkind = k2 }) when rename ->
-              eqtype_subst type_pairs subst t1' k1 t2' k2 ~do_jkind_check
+              eqtype_subst env type_pairs subst t1' k1 t2' k2 ~do_jkind_check
           | (Tarrow ((l1,a1,r1), t1, u1, _),
              Tarrow ((l2,a2,r2), t2, u2, _)) when
                (l1 = l2
@@ -5629,7 +5630,7 @@ let rec eqtype rename type_pairs subst env ~do_jkind_check t1 t2 =
               enter_poly_for Equality env univar_pairs t1 tl1 t2 tl2
                 (eqtype rename type_pairs subst env ~do_jkind_check)
           | (Tunivar {jkind=k1}, Tunivar {jkind=k2}) ->
-              unify_univar_for Equality t1' t2' k1 k2 !univar_pairs
+              unify_univar_for Equality env t1' t2' k1 k2 !univar_pairs
           | (_, _) ->
               raise_unexplained_for Equality
         end

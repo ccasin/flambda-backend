@@ -286,7 +286,6 @@ module Error = struct
           required_layouts_level : Language_extension.maturity
         }
         -> t
-    | Unknown_jkind of Parsetree.jkind_annotation
     | Multiple_jkinds of
         { from_annotation : Parsetree.jkind_annotation;
           from_attribute : Builtin_attributes.jkind_attribute Location.loc
@@ -588,20 +587,72 @@ end
 module Base_and_axes = struct
   include Jkind_base_and_axes
 
+  (* This function does one step of expansion on the jkind base. It's the
+     identity if the input's base is a layout. Returns [None] if the kind can
+     not be expanded further (it is abstract, already a layout, or we are
+     missing the appropriate cmi).  *)
+  let expand_base_once env t =
+    match t.base with
+    | Layout _ -> None
+    | Kconstr p ->
+      match Env.find_jkind p env with
+      | exception Not_found -> None
+      | { jkind_manifest = None; _ } -> None
+      | { jkind_manifest = Some jkind; _ } ->
+        Some
+          { base = jkind.jkind.base;
+            mod_bounds = Mod_bounds.meet t.mod_bounds jkind.jkind.mod_bounds;
+            with_bounds = t.with_bounds
+              (* jkind is an lr kind and therefore has no with bounds. *)
+          }
+
+  (* Given two jkind_descs, expand their bases until they can be meaningfully
+     compared.  We stop in one of three cases:
+     - Both bases are [Kconstr]s with identical paths.
+     - Both bases are [Layout]s.
+     - [for_sub] is true and the right kind is known to be max.
+
+     This is the first step in checking equality and subkinding - no point in
+     comparing the bounds if we don't have a way to compare what the bounds are
+     modifying.
+
+     This assumes jkinds are not recursive, and can infinite loop if they are.
+  *)
+  let rec expand_to_checkable_bases env ~for_sub t1 t2 =
+    match t1.base, t2.base with
+    | Layout _, Layout _ -> Some (t1, t2)
+    | _, Layout Layout.Any when for_sub && Mod_bounds.is_max t2.mod_bounds ->
+      Some (t1, t2)
+    | Kconstr p1, Kconstr p2 when Path.same p1 p2 -> Some (t1, t2)
+    | Kconstr _, Layout _ | Layout _, Kconstr _ | Kconstr _, Kconstr _ ->
+      match expand_base_once env t1, expand_base_once env t2 with
+      | None, None -> None
+      | None, Some t2 -> expand_to_checkable_bases env ~for_sub t1 t2
+      | Some t1, None -> expand_to_checkable_bases env ~for_sub t1 t2
+      | Some t1, Some t2 -> expand_to_checkable_bases env ~for_sub t1 t2
+
   (* XXX abstract kinds: this is wrong, must expand kconstrs. *)
-  let equal eq_layout
-      { base = base1;
-        mod_bounds = mod_bounds1;
-        with_bounds = (No_with_bounds : (allowed * allowed) with_bounds)
-      }
-      { base = base2;
-        mod_bounds = mod_bounds2;
-        with_bounds = (No_with_bounds : (allowed * allowed) with_bounds)
-      } =
-    match base1, base2 with
-    | Layout l1, Layout l2 ->
-      eq_layout l1 l2 && Mod_bounds.equal mod_bounds1 mod_bounds2
-    | _, _ -> assert false
+  let equal env eq_layout t1 t2 =
+    match expand_to_checkable_bases env ~for_sub:false t1 t2 with
+    | None -> false
+    | Some
+      ({ base = base1;
+         mod_bounds = mod_bounds1;
+         with_bounds = (No_with_bounds : (allowed * allowed) with_bounds)
+       },
+       { base = base2;
+         mod_bounds = mod_bounds2;
+         with_bounds = (No_with_bounds : (allowed * allowed) with_bounds)
+       }) ->
+      match base1, base2 with
+      | Layout l1, Layout l2 ->
+        eq_layout l1 l2 && Mod_bounds.equal mod_bounds1 mod_bounds2
+      | Kconstr _, Kconstr _ ->
+        (* Kconstr paths checked for equality by [expand_to_checkable_bases] *)
+        Mod_bounds.equal mod_bounds1 mod_bounds2
+      | Layout _, Kconstr _ | Kconstr _, Layout _ ->
+        Misc.fatal_error
+          "Jkind.Base_and_axes.equal: [expand_to_checkable_bases] spec wrong"
 
   let debug_print format_layout ppf { base; mod_bounds; with_bounds } =
     Format.fprintf ppf "{ base = %a;@ mod_bounds = %a;@ with_bounds = %a }"
@@ -941,6 +992,12 @@ let set_outcometree_of_modalities_new p = outcometree_of_modalities_new := p
 module Const = struct
   include Jkind_const
 
+  let abstract path =
+    { base = Kconstr path;
+      mod_bounds = Mod_bounds.max;
+      with_bounds = No_with_bounds
+    }
+
   module To_out_jkind_const : sig
     (** Convert a [t] into a [Outcometree.out_jkind_const].
         The jkind is written in terms of the built-in jkind that requires the
@@ -1187,7 +1244,7 @@ module Const = struct
       _ -> (l * r) Context_with_transl.t ->
       Parsetree.jkind_annotation -> (l * r) t =
     fun env context jkind ->
-    let _loc = jkind.pjka_loc in
+    let loc = jkind.pjka_loc in
     match jkind.pjka_desc with
     | Abbreviation name ->
       (* CR layouts v2.8: move this to predef *)
@@ -1212,8 +1269,9 @@ module Const = struct
       (* XXX all these cases should be this lookup. *)
       (* XXX Abbreviation needs to take an lident *)
       | _ ->
-        (match (* Env.lookup_jkind ~loc (Lident name) env *) None with
-         | _ -> raise ~loc:jkind.pjka_loc (Unknown_jkind jkind)))
+        let p, _ = Env.lookup_jkind ~loc (Lident name) env in
+        abstract p
+      )
       |> allow_left |> allow_right
     | Mod (base, modifiers) ->
       let base =
@@ -1332,8 +1390,8 @@ module Jkind_desc = struct
   let unsafely_set_bounds t ~from =
     { t with mod_bounds = from.mod_bounds; with_bounds = from.with_bounds }
 
-  let equate_or_equal ~allow_mutation t1 t2 =
-    Base_and_axes.equal (Layout.equate_or_equal ~allow_mutation) t1 t2
+  let equate_or_equal env ~allow_mutation t1 t2 =
+    Base_and_axes.equal env (Layout.equate_or_equal ~allow_mutation) t1 t2
 
   let sub (type l r) ~type_equal:_ ~jkind_of_type
       (sub : (allowed * r) jkind_desc)
@@ -2629,7 +2687,7 @@ end
 (******************************)
 (* relations *)
 
-let equate_or_equal ~allow_mutation
+let equate_or_equal env ~allow_mutation
     { jkind = jkind1;
       annotation = _;
       history = _;
@@ -2644,7 +2702,7 @@ let equate_or_equal ~allow_mutation
       ran_out_of_fuel_during_normalize = _;
       quality = _
     } =
-  Jkind_desc.equate_or_equal ~allow_mutation jkind1 jkind2
+  Jkind_desc.equate_or_equal env ~allow_mutation jkind1 jkind2
 
 (* CR layouts v2.8: Switch this back to ~allow_mutation:false *)
 let equal t1 t2 = equate_or_equal ~allow_mutation:true t1 t2
@@ -3129,12 +3187,6 @@ end
 
 (*** formatting user errors ***)
 let report_error ~loc : Error.t -> _ = function
-  | Unknown_jkind jkind ->
-    Location.errorf ~loc
-      (* CR layouts v2.9: use the context to produce a better error message.
-         When RAE tried this, some types got printed like [t/2], but the
-         [/2] shouldn't be there. Investigate and fix. *)
-      "@[<v>Unknown layout %a@]" Pprintast.jkind_annotation jkind
   | Multiple_jkinds { from_annotation; from_attribute } ->
     Location.errorf ~loc
       "@[<v>A type declaration's layout can be given at most once.@;\
