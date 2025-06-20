@@ -1302,7 +1302,8 @@ let rec check_constraints_rec env loc visited ty =
           let jkind_of_type ty = Some (Ctype.type_jkind_purely env ty) in
           let violation =
             Jkind.Violation.of_ ~jkind_of_type
-              (Not_a_subjkind (Jkind.disallow_right original_jkind,
+              (Not_a_subjkind (env,
+                               Jkind.disallow_right original_jkind,
                                Jkind.disallow_left inferred_jkind,
                                []))
           in
@@ -1475,7 +1476,7 @@ let narrow_to_manifest_jkind env loc decl =
         let type_equal = Ctype.type_equal env in
         let jkind_of_type ty = Some (Ctype.type_jkind_purely env ty) in
         match
-          Jkind.sub_jkind_l ~type_equal ~jkind_of_type
+          Jkind.sub_jkind_l ~type_equal ~jkind_of_type env
             manifest_jkind decl.type_jkind
         with
         | Ok () -> ()
@@ -2036,21 +2037,14 @@ let rec update_decl_jkind env dpath decl =
      variables in the original decl's jkind, which might be shared with the jkinds of
      other types in a (maybe mutually recursive) type declaration. See Note [Default
      jkinds in transl_declaration]) *)
-  match new_decl.type_jkind.jkind.base, decl.type_jkind.jkind.base with
-  | Kconstr _, _ | _, Kconstr _ -> assert false (* XXX abstract kinds *)
-  | Layout l1, Layout l2 -> begin
-    match Jkind.Layout.sub l1 l2 with
-    | Not_le reason ->
-      let jkind_of_type ty = Some (Ctype.type_jkind_purely env ty) in
-      raise (Error (
-        decl.type_loc,
-        Jkind_mismatch_of_path (
-          dpath,
-          Jkind.Violation.of_ ~jkind_of_type (
-            Not_a_subjkind (
-              new_decl.type_jkind, decl.type_jkind, Nonempty_list.to_list reason)))))
-    | Less | Equal -> new_decl
-  end
+  let jkind_of_type ty = Some (Ctype.type_jkind_purely env ty) in
+  match
+    Jkind.sub_layout_or_error ~jkind_of_type env
+      new_decl.type_jkind decl.type_jkind
+  with
+  | Ok () -> new_decl
+  | Error err ->
+    raise (Error (decl.type_loc, Jkind_mismatch_of_path (dpath, err)))
 
 let update_decls_jkind_reason env decls =
   List.map
@@ -2685,6 +2679,7 @@ let normalize_decl_jkinds env shapes decls =
           ~type_equal
           ~jkind_of_type
           ~allow_any_crossing
+          env
           decl.type_jkind
           original_decl.type_jkind
       with

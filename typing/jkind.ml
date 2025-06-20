@@ -566,17 +566,30 @@ module Base = struct
     | Layout l -> layout_to_string l
     | Kconstr p -> Path.name p
 
-  (* These are going to need some way to expand bases. *)
-  let sub base1 base2 =
+  (* This is only correct on bases that come from the output of
+     [Base_and_axes.expand_to_checkable_bases]. See comment on that function for
+     the relevant invariants. *)
+  let sub_expanded base1 base2 =
     match base1, base2 with
     | Layout l1, Layout l2 -> Layout.sub l1 l2
-    | _ -> assert false (* XXX abstract kinds *)
+    | Kconstr _, Kconstr _ -> Sub_result.Equal
+    | Kconstr _, Layout Layout.Any -> Sub_result.Less
+    | Kconstr _, Layout _ | Layout _, Kconstr _ ->
+      Misc.fatal_error
+        "Jkind.Base.sub_expanded: [expand_to_checkable_bases] spec wrong"
 
-  let intersection base1 base2 =
+  (* This is only correct on bases that come from the output of
+     [Base_and_axes.expand_to_checkable_bases]. See comment on that function for
+     the relevant invariants. *)
+  let intersection_expanded base1 base2 =
     match base1, base2 with
     | Layout l1, Layout l2 ->
       Option.map (fun l -> Layout l) (Layout.intersection l1 l2)
-    | _ -> assert false (* XXX abstract kinds *)
+    | Kconstr _, Kconstr _ -> Some base1
+    | Kconstr _, Layout Layout.Any -> Some base1
+    | Kconstr _, Layout _ | Layout _, Kconstr _ ->
+      Misc.fatal_error
+        "Jkind.Base.sub_expanded: [expand_to_checkable_bases] spec wrong"
 
   let format format_layout ppf base =
     match base with
@@ -610,7 +623,7 @@ module Base_and_axes = struct
      compared.  We stop in one of three cases:
      - Both bases are [Kconstr]s with identical paths.
      - Both bases are [Layout]s.
-     - [for_sub] is true and the right kind is known to be max.
+     - [allow_any] is true and the right kind has layout any
 
      This is the first step in checking equality and subkinding - no point in
      comparing the bounds if we don't have a way to compare what the bounds are
@@ -618,22 +631,20 @@ module Base_and_axes = struct
 
      This assumes jkinds are not recursive, and can infinite loop if they are.
   *)
-  let rec expand_to_checkable_bases env ~for_sub t1 t2 =
+  let rec expand_to_checkable_bases env ~allow_any t1 t2 =
     match t1.base, t2.base with
     | Layout _, Layout _ -> Some (t1, t2)
-    | _, Layout Layout.Any when for_sub && Mod_bounds.is_max t2.mod_bounds ->
-      Some (t1, t2)
+    | _, Layout Layout.Any when allow_any -> Some (t1, t2)
     | Kconstr p1, Kconstr p2 when Path.same p1 p2 -> Some (t1, t2)
     | Kconstr _, Layout _ | Layout _, Kconstr _ | Kconstr _, Kconstr _ ->
       match expand_base_once env t1, expand_base_once env t2 with
       | None, None -> None
-      | None, Some t2 -> expand_to_checkable_bases env ~for_sub t1 t2
-      | Some t1, None -> expand_to_checkable_bases env ~for_sub t1 t2
-      | Some t1, Some t2 -> expand_to_checkable_bases env ~for_sub t1 t2
+      | None, Some t2 -> expand_to_checkable_bases env ~allow_any t1 t2
+      | Some t1, None -> expand_to_checkable_bases env ~allow_any t1 t2
+      | Some t1, Some t2 -> expand_to_checkable_bases env ~allow_any t1 t2
 
-  (* XXX abstract kinds: this is wrong, must expand kconstrs. *)
   let equal env eq_layout t1 t2 =
-    match expand_to_checkable_bases env ~for_sub:false t1 t2 with
+    match expand_to_checkable_bases env ~allow_any:false t1 t2 with
     | None -> false
     | Some
       ({ base = base1;
@@ -1107,8 +1118,9 @@ module Const = struct
     let convert_with_base ~(base : Builtin.t) (actual : _ t) =
       let matching_layouts =
         match base.jkind.base, actual.base with
-        | Kconstr _, _ | _, Kconstr _ -> assert false (* XXX abstract kinds *)
+        | Kconstr p1, Kconstr p2 -> Path.same p1 p2
         | Layout l1, Layout l2 -> Jkind_types.Layout.Const.equal l1 l2
+        | (Kconstr _ | Layout _), _ -> false
       in
       let modal_bounds =
         get_modal_bounds ~base:base.jkind.mod_bounds actual.mod_bounds
@@ -1393,36 +1405,60 @@ module Jkind_desc = struct
   let equate_or_equal env ~allow_mutation t1 t2 =
     Base_and_axes.equal env (Layout.equate_or_equal ~allow_mutation) t1 t2
 
-  let sub (type l r) ~type_equal:_ ~jkind_of_type
-      (sub : (allowed * r) jkind_desc)
-      ({ base = base2; mod_bounds = bounds2; with_bounds = No_with_bounds } :
-        (l * allowed) jkind_desc) =
-    let axes_max_on_right =
-      (* Optimization: if the upper_bound is max on the right, then that axis is
-         irrelevant - the left will always satisfy the right along that axis. *)
-      Mod_bounds.get_max_axes bounds2
-    in
-    let ( ({ base = base1; mod_bounds = bounds1; with_bounds = No_with_bounds } :
+  let sub (type l r) ~type_equal:_ ~jkind_of_type env
+      (desc_1 : (allowed * r) jkind_desc)
+      (desc_2 : (l * allowed) jkind_desc) =
+    match
+      Base_and_axes.expand_to_checkable_bases env ~allow_any:true desc_1 desc_2
+    with
+    | None -> Sub_result.(Not_le [Layout_disagreement])
+    | Some
+        (desc_1,
+         { base = base2; mod_bounds = bounds2; with_bounds = No_with_bounds })
+      ->
+      let axes_max_on_right =
+        (* Optimization: if the upper_bound is max on the right, then that axis
+           is irrelevant - the left will always satisfy the right along that
+           axis. *)
+        Mod_bounds.get_max_axes bounds2
+      in
+      let
+        (({ base = base1; mod_bounds = bounds1; with_bounds = No_with_bounds } :
             (_ * allowed) jkind_desc),
-          _ ) =
-      Base_and_axes.normalize ~skip_axes:axes_max_on_right ~mode:Ignore_best
-        ~jkind_of_type sub
-    in
-    let base = Base.sub base1 base2 in
-    let bounds = Mod_bounds.less_or_equal bounds1 bounds2 in
-    Sub_result.combine base bounds
+         _ ) =
+        Base_and_axes.normalize ~skip_axes:axes_max_on_right ~mode:Ignore_best
+          ~jkind_of_type desc_1
+      in
+      let base = Base.sub_expanded base1 base2 in
+      let bounds = Mod_bounds.less_or_equal bounds1 bounds2 in
+      Sub_result.combine base bounds
 
-  let intersection
-      { base = base1; mod_bounds = mod_bounds1; with_bounds = with_bounds1 }
-      { base = base2; mod_bounds = mod_bounds2; with_bounds = with_bounds2 } =
-    match Base.intersection base1 base2 with
+  let intersection env desc1 desc2 =
+    match
+      Base_and_axes.expand_to_checkable_bases env ~allow_any:true desc1 desc2
+    with
     | None -> None
-    | Some base ->
-      Some
-        { base;
-          mod_bounds = Mod_bounds.meet mod_bounds1 mod_bounds2;
-          with_bounds = With_bounds.meet with_bounds1 with_bounds2
-        }
+    | Some (
+      { base = base1; mod_bounds = mod_bounds1; with_bounds = with_bounds1 },
+      { base = base2; mod_bounds = mod_bounds2; with_bounds = with_bounds2 }
+    ) ->
+      match Base.intersection_expanded base1 base2 with
+      | None -> None
+      | Some base ->
+        Some
+          { base;
+            mod_bounds = Mod_bounds.meet mod_bounds1 mod_bounds2;
+            with_bounds = With_bounds.meet with_bounds1 with_bounds2
+          }
+
+  let sub_layout env desc1 desc2 =
+    match
+      Base_and_axes.expand_to_checkable_bases env ~allow_any:true desc1 desc2
+    with
+    | None -> Sub_result.(Not_le [Layout_disagreement])
+    | Some ({ base = base1; mod_bounds = _; with_bounds = _ },
+            { base = base2; mod_bounds = _; with_bounds = _ }) ->
+      Base.sub_expanded base1 base2
 
   let of_new_sort_var nullability_upper_bound separability_upper_bound =
     let layout, sort = Layout.of_new_sort_var () in
@@ -2446,7 +2482,8 @@ module Violation = struct
 
   type violation =
     | Not_a_subjkind :
-        (allowed * 'r1) jkind * ('l * 'r2) jkind * Sub_failure_reason.t list
+        Env.t * (allowed * 'r1) jkind * ('l * 'r2) jkind *
+        Sub_failure_reason.t list
         -> violation
     | No_intersection : 'd jkind * ('l * allowed) jkind -> violation
 
@@ -2465,14 +2502,14 @@ module Violation = struct
     (* Normalize for better printing *)
     let violation =
       match violation with
-      | Not_a_subjkind (jkind1, jkind2, reasons) ->
+      | Not_a_subjkind (env, jkind1, jkind2, reasons) ->
         let jkind1 =
           normalize ~mode:Require_best ~jkind_of_type (disallow_right jkind1)
         in
         let jkind2 =
           normalize ~mode:Require_best ~jkind_of_type (disallow_right jkind2)
         in
-        Not_a_subjkind (jkind1, jkind2, reasons)
+        Not_a_subjkind (env, jkind1, jkind2, reasons)
       | No_intersection (jkind1, jkind2) ->
         let jkind1 =
           normalize ~mode:Require_best ~jkind_of_type (disallow_right jkind1)
@@ -2494,7 +2531,7 @@ module Violation = struct
        when there are no modalities that it makes the error unnecessarily noisy.
     *)
     match violation with
-    | Not_a_subjkind (sub, super, reasons) -> (
+    | Not_a_subjkind (_env, sub, super, reasons) -> (
       let disagreeing_axes =
         (* Collect all the axes that disagree into a set. If none disagree,
            then it is [None] *)
@@ -2572,7 +2609,7 @@ module Violation = struct
     in
     let first_ran_out, second_ran_out =
       match violation with
-      | Not_a_subjkind (k1, k2, _) ->
+      | Not_a_subjkind (_, k1, k2, _) ->
         k1.ran_out_of_fuel_during_normalize, k2.ran_out_of_fuel_during_normalize
       | No_intersection (k1, k2) ->
         k1.ran_out_of_fuel_during_normalize, k2.ran_out_of_fuel_during_normalize
@@ -2583,10 +2620,18 @@ module Violation = struct
   let report_general preamble pp_former former ppf t =
     let mismatch_type =
       match t.violation with
-      | Not_a_subjkind (k1, k2, _) ->
-        if Sub_result.is_le (Base.sub k1.jkind.base k2.jkind.base)
-        then Mode
-        else Layout
+      | Not_a_subjkind (env, k1, k2, _) ->
+        begin
+          match
+            Base_and_axes.expand_to_checkable_bases env ~allow_any:true
+              k1.jkind k2.jkind
+          with
+          | None -> Layout
+          | Some (k1, k2) ->
+            if Sub_result.is_le (Base.sub_expanded k1.base k2.base)
+            then Mode
+            else Layout
+        end
       | No_intersection _ -> Layout
     in
     let layout_or_kind =
@@ -2613,7 +2658,7 @@ module Violation = struct
     in
     let Pack_jkind k1, Pack_jkind k2, fmt_k1, fmt_k2, missing_cmi_option =
       match t with
-      | { violation = Not_a_subjkind (k1, k2, _); missing_cmi } -> (
+      | { violation = Not_a_subjkind (_, k1, k2, _); missing_cmi } -> (
         let missing_cmi =
           match missing_cmi with
           | None -> (
@@ -2721,7 +2766,7 @@ let score_reason = function
   | Creation (Concrete_creation _ | Concrete_legacy_creation _) -> -1
   | _ -> 0
 
-let combine_histories ~type_equal ~jkind_of_type reason (Pack_jkind k1)
+let combine_histories env ~type_equal ~jkind_of_type reason (Pack_jkind k1)
     (Pack_jkind k2) =
   if flattened_histories
   then
@@ -2731,7 +2776,7 @@ let combine_histories ~type_equal ~jkind_of_type reason (Pack_jkind k1)
       else history_b
     in
     let choose_subjkind_history k_a history_a k_b history_b =
-      match Jkind_desc.sub ~type_equal ~jkind_of_type k_a k_b with
+      match Jkind_desc.sub ~type_equal ~jkind_of_type env k_a k_b with
       | Less -> history_a
       | Not_le _ ->
         (* CR layouts: this will be wrong if we ever have a non-trivial meet in
@@ -2756,19 +2801,26 @@ let combine_histories ~type_equal ~jkind_of_type reason (Pack_jkind k1)
         history2 = k2.history
       }
 
-let has_intersection t1 t2 =
+let has_intersection env t1 t2 =
   (* Need to check only the layouts: all the axes have bottom elements. *)
-  Option.is_some (Base.intersection t1.jkind.base t2.jkind.base)
+  match
+    Base_and_axes.expand_to_checkable_bases env ~allow_any:true
+      t1.jkind t2.jkind
+  with
+    | None -> false
+    | Some ({ base = base1; mod_bounds = _; with_bounds = _ },
+            { base = base2; mod_bounds = _; with_bounds = _ }) ->
+      Option.is_some (Base.intersection_expanded base1 base2)
 
-let intersection_or_error ~type_equal ~jkind_of_type ~reason t1 t2 =
-  match Jkind_desc.intersection t1.jkind t2.jkind with
+let intersection_or_error ~type_equal ~jkind_of_type ~reason env t1 t2 =
+  match Jkind_desc.intersection env t1.jkind t2.jkind with
   | None -> Error (Violation.of_ ~jkind_of_type (No_intersection (t1, t2)))
   | Some jkind ->
     Ok
       { jkind;
         annotation = None;
         history =
-          combine_histories ~type_equal ~jkind_of_type reason (Pack_jkind t1)
+          combine_histories env ~type_equal ~jkind_of_type reason (Pack_jkind t1)
             (Pack_jkind t2);
         has_warned = t1.has_warned || t2.has_warned;
         ran_out_of_fuel_during_normalize =
@@ -2789,57 +2841,75 @@ let round_up (type l r) ~jkind_of_type (t : (allowed * r) jkind) :
   }
 
 (* this is hammered on; it must be fast! *)
-let check_sub ~jkind_of_type sub super =
-  Jkind_desc.sub ~jkind_of_type sub.jkind super.jkind
+let check_sub ~jkind_of_type env sub super =
+  Jkind_desc.sub ~jkind_of_type env sub.jkind super.jkind
 
-let sub_with_reason ~type_equal ~jkind_of_type sub super =
-  Sub_result.require_le (check_sub ~type_equal ~jkind_of_type sub super)
+let sub_with_reason ~type_equal ~jkind_of_type env sub super =
+  Sub_result.require_le (check_sub ~type_equal ~jkind_of_type env sub super)
 
-let sub ~type_equal ~jkind_of_type sub super =
-  Result.is_ok (sub_with_reason ~type_equal ~jkind_of_type sub super)
+let sub ~type_equal ~jkind_of_type env sub super =
+  Result.is_ok (sub_with_reason ~type_equal ~jkind_of_type env sub super)
 
 type sub_or_intersect =
   | Sub
   | Disjoint of Violation.Sub_failure_reason.t Nonempty_list.t
   | Has_intersection of Violation.Sub_failure_reason.t Nonempty_list.t
 
-let sub_or_intersect ~type_equal ~jkind_of_type t1 t2 =
-  match sub_with_reason ~type_equal ~jkind_of_type t1 t2 with
+let sub_or_intersect ~type_equal ~jkind_of_type env t1 t2 =
+  match sub_with_reason ~type_equal ~jkind_of_type env t1 t2 with
   | Ok () -> Sub
   | Error reason ->
-    if has_intersection t1 t2 then Has_intersection reason else Disjoint reason
+    if has_intersection env t1 t2
+    then Has_intersection reason
+    else Disjoint reason
 
-let sub_or_error ~type_equal ~jkind_of_type t1 t2 =
-  match sub_or_intersect ~type_equal ~jkind_of_type t1 t2 with
+let sub_or_error ~type_equal ~jkind_of_type env t1 t2 =
+  match sub_or_intersect ~type_equal ~jkind_of_type env t1 t2 with
   | Sub -> Ok ()
   | Disjoint reason | Has_intersection reason ->
     Error
       (Violation.of_ ~jkind_of_type
-         (Not_a_subjkind (t1, t2, Nonempty_list.to_list reason)))
+         (Not_a_subjkind (env, t1, t2, Nonempty_list.to_list reason)))
 
-let sub_jkind_l ~type_equal ~jkind_of_type ?(allow_any_crossing = false) sub
+let sub_layout_or_error ~jkind_of_type env t1 t2 =
+  match Jkind_desc.sub_layout env t1.jkind t2.jkind with
+  | Equal | Less -> Ok ()
+  | Not_le reason ->
+    Error
+      (Violation.of_ ~jkind_of_type
+         (Not_a_subjkind (env, t1, t2, Nonempty_list.to_list reason)))
+
+let sub_jkind_l ~type_equal ~jkind_of_type ?(allow_any_crossing = false) env sub
     super =
   (* This function implements the "SUB" judgement from kind-inference.md. *)
   let open Misc.Stdlib.Monad.Result.Syntax in
-  let require_le sub_result =
-    Sub_result.require_le sub_result
-    |> Result.map_error (fun reasons ->
-           (* When we report an error, we want to show the best-normalized
-              version of sub, but the original super. When this check fails, it
-              is usually the case that the super was written by the user and the
-              sub was inferred. Thus, we should display the user-written jkind,
-              but simplify the inferred one, since the inferred one is probably
-              overly complex. *)
-           (* CR layouts v2.8: It would be useful report to the user why this
-              violation occurred, specifically which axes the violation is
-              along. *)
-           let best_sub = normalize ~mode:Require_best ~jkind_of_type sub in
-           Violation.of_ ~jkind_of_type
-             (Not_a_subjkind (best_sub, super, Nonempty_list.to_list reasons)))
+  let normalize_error reasons =
+    (* When we report an error, we want to show the best-normalized version of
+       sub, but the original super. When this check fails, it is usually the
+       case that the super was written by the user and the sub was
+       inferred. Thus, we should display the user-written jkind, but simplify
+       the inferred one, since the inferred one is probably overly complex. *)
+    (* CR layouts v2.8: It would be useful report to the user why this violation
+       occurred, specifically which axes the violation is along. *)
+    let best_sub = normalize ~mode:Require_best ~jkind_of_type sub in
+    Violation.of_ ~jkind_of_type
+      (Not_a_subjkind (env, best_sub, super, Nonempty_list.to_list reasons))
   in
-  let* () =
-    (* Validate layouts *)
-    require_le (Base.sub sub.jkind.base super.jkind.base)
+  let require_le sub_result =
+    Sub_result.require_le sub_result |> Result.map_error normalize_error
+  in
+  let* (sub, super) =
+    (* Expand and validate bases *)
+    match
+      Base_and_axes.expand_to_checkable_bases env ~allow_any:true sub.jkind
+        super.jkind
+    with
+    | None -> Error (normalize_error [Layout_disagreement])
+    | Some (sub_jkind, super_jkind) ->
+      let* () =
+        require_le (Base.sub_expanded sub_jkind.base super_jkind.base)
+      in
+      Ok ({ sub with jkind = sub_jkind }, { super with jkind = super_jkind })
   in
   match allow_any_crossing with
   | true -> Ok ()

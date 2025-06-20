@@ -181,7 +181,8 @@ module Violation : sig
        in [sub_jkind_l]. There is no downside to this, as the printing
        machinery works over l-jkinds. *)
     | Not_a_subjkind :
-        (allowed * 'r1) Types.jkind
+        Env.t
+        * (allowed * 'r1) Types.jkind
         * ('l * 'r2) Types.jkind
         * Sub_failure_reason.t list
         -> violation
@@ -717,7 +718,7 @@ val equal : Env.t -> Types.jkind_lr -> Types.jkind_lr -> bool
     sort variables. Works over any mix of l- and r-jkinds, because the only
     way not to have an intersection is by looking at the layout: all axes
     have a bottom element. *)
-val has_intersection : 'd1 Types.jkind -> 'd2 Types.jkind -> bool
+val has_intersection : Env.t -> 'd1 Types.jkind -> 'd2 Types.jkind -> bool
 
 (** Finds the intersection of two jkinds, constraining sort variables to
     create one if needed, or returns a [Violation.t] if an intersection does
@@ -730,6 +731,7 @@ val intersection_or_error :
   type_equal:(Types.type_expr -> Types.type_expr -> bool) ->
   jkind_of_type:(Types.type_expr -> Types.jkind_l option) ->
   reason:History.interact_reason ->
+  Env.t ->
   ('l1 * allowed) Types.jkind ->
   ('l2 * allowed) Types.jkind ->
   (('l1 * allowed) Types.jkind, Violation.t) Result.t
@@ -739,6 +741,7 @@ val intersection_or_error :
 val sub :
   type_equal:(Types.type_expr -> Types.type_expr -> bool) ->
   jkind_of_type:(Types.type_expr -> Types.jkind_l option) ->
+  Env.t ->
   Types.jkind_l ->
   Types.jkind_r ->
   bool
@@ -756,6 +759,7 @@ type sub_or_intersect =
 val sub_or_intersect :
   type_equal:(Types.type_expr -> Types.type_expr -> bool) ->
   jkind_of_type:(Types.type_expr -> Types.jkind_l option) ->
+  Env.t ->
   (allowed * 'r) Types.jkind ->
   ('l * allowed) Types.jkind ->
   sub_or_intersect
@@ -765,9 +769,17 @@ val sub_or_intersect :
 val sub_or_error :
   type_equal:(Types.type_expr -> Types.type_expr -> bool) ->
   jkind_of_type:(Types.type_expr -> Types.jkind_l option) ->
+  Env.t ->
   (allowed * 'r) Types.jkind ->
   ('l * allowed) Types.jkind ->
   (unit, Violation.t) result
+
+(** [sub_layout t1 t2] says whether [t1]'s layout is a sublayout of [t2]s.
+    Might update either [t1] or [t2] to make their layouts equal. Does not check
+    bounds at all. *)
+val sub_layout_or_error :
+  jkind_of_type:(Types.type_expr -> Types.jkind_l option) ->
+  Env.t -> Types.jkind_l -> Types.jkind_l -> (unit, Violation.t) result
 
 (** Like [sub], but compares a left jkind against another left jkind.
     Pre-condition: the super jkind must be fully settled; no variables which
@@ -777,6 +789,7 @@ val sub_jkind_l :
   type_equal:(Types.type_expr -> Types.type_expr -> bool) ->
   jkind_of_type:(Types.type_expr -> Types.jkind_l option) ->
   ?allow_any_crossing:bool ->
+  Env.t ->
   Types.jkind_l ->
   Types.jkind_l ->
   (unit, Violation.t) result

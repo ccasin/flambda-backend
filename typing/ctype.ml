@@ -2427,7 +2427,7 @@ let constrain_type_jkind ~fixed env ty jkind =
     if fuel < 0 then
       Error (
         Jkind.Violation.of_ ~jkind_of_type (
-          Not_a_subjkind (ty's_jkind, jkind, [Constrain_ran_out_of_fuel])))
+          Not_a_subjkind (env, ty's_jkind, jkind, [Constrain_ran_out_of_fuel])))
     else
     match get_desc ty with
     (* The [ty's_jkind] we get here is an **r** jkind, necessary for
@@ -2456,7 +2456,7 @@ let constrain_type_jkind ~fixed env ty jkind =
         *)
        let jkind_inter =
          Jkind.intersection_or_error ~type_equal ~jkind_of_type
-           ~reason:Tyvar_refinement_intersection ty's_jkind jkind
+           ~reason:Tyvar_refinement_intersection env ty's_jkind jkind
        in
        Result.map (set_var_jkind ty) jkind_inter
 
@@ -2468,7 +2468,7 @@ let constrain_type_jkind ~fixed env ty jkind =
 
     | _ ->
        match
-         Jkind.sub_or_intersect ~type_equal ~jkind_of_type ty's_jkind jkind
+         Jkind.sub_or_intersect ~type_equal ~jkind_of_type env ty's_jkind jkind
        with
        | Sub -> Ok ()
        | Disjoint sub_failure_reasons ->
@@ -2481,7 +2481,8 @@ let constrain_type_jkind ~fixed env ty jkind =
              types. So we don't, settling for the slightly worse error
              message. *)
           Error (Jkind.Violation.of_ ~jkind_of_type
-            (Not_a_subjkind (ty's_jkind, jkind, Nonempty_list.to_list sub_failure_reasons)))
+                   (Not_a_subjkind (env, ty's_jkind, jkind,
+                                    Nonempty_list.to_list sub_failure_reasons)))
        | Has_intersection sub_failure_reasons ->
            let sub_failure_reasons = Nonempty_list.to_list sub_failure_reasons in
            let product ~fuel tys =
@@ -2499,7 +2500,8 @@ let constrain_type_jkind ~fixed env ty jkind =
                if List.for_all Result.is_ok results
                then Ok ()
                else Error (Jkind.Violation.of_ ~jkind_of_type
-                      (Not_a_subjkind (ty's_jkind, jkind, sub_failure_reasons)))
+                             (Not_a_subjkind (env, ty's_jkind, jkind,
+                                              sub_failure_reasons)))
              in
              begin match Jkind.decompose_product ty's_jkind,
                          Jkind.decompose_product jkind with
@@ -2518,7 +2520,8 @@ let constrain_type_jkind ~fixed env ty jkind =
                   given a jkind annotation of the wrong product arity.
                *)
                Error (Jkind.Violation.of_ ~jkind_of_type
-                  (Not_a_subjkind (ty's_jkind, jkind, sub_failure_reasons)))
+                        (Not_a_subjkind (env, ty's_jkind, jkind,
+                                         sub_failure_reasons)))
              end
           in
           match get_desc ty with
@@ -2530,14 +2533,15 @@ let constrain_type_jkind ~fixed env ty jkind =
                  (estimate_type_jkind env ty) jkind
              else
                begin match unbox_once env ty with
-               | Missing path -> Error (Jkind.Violation.of_
-                                          ~jkind_of_type ~missing_cmi:path
-                                          (Not_a_subjkind (ty's_jkind, jkind,
-                                                           sub_failure_reasons)))
+               | Missing path ->
+                 Error (Jkind.Violation.of_ ~jkind_of_type ~missing_cmi:path
+                          (Not_a_subjkind (env, ty's_jkind, jkind,
+                                           sub_failure_reasons)))
                | Final_result ->
                  Error
                    (Jkind.Violation.of_ ~jkind_of_type
-                      (Not_a_subjkind (ty's_jkind, jkind, sub_failure_reasons)))
+                      (Not_a_subjkind (env, ty's_jkind, jkind,
+                                       sub_failure_reasons)))
                | Stepped { ty; is_open = is_open2; modality } ->
                  let is_open = is_open || is_open2 in
                  let jkind = Jkind.apply_modality_r modality jkind in
@@ -2555,7 +2559,7 @@ let constrain_type_jkind ~fixed env ty jkind =
               mk_unwrapped_type_expr ty) ltys)
           | _ ->
             Error (Jkind.Violation.of_ ~jkind_of_type
-                (Not_a_subjkind (ty's_jkind, jkind, sub_failure_reasons)))
+                (Not_a_subjkind (env, ty's_jkind, jkind, sub_failure_reasons)))
   in
   loop ~fuel:100 ~expanded:false ty ~is_open:false
     (estimate_type_jkind env ty) (Jkind.disallow_left jkind)
@@ -2655,7 +2659,8 @@ let rec intersect_type_jkind ~reason env ty1 jkind2 =
        one. See the comment above this function arguing why this is OK here. *)
     (* CR layouts v2.8: Think about doing better, but it's probably not worth
        it. *)
-    Jkind.intersection_or_error ~type_equal ~jkind_of_type ~reason jkind1 jkind2
+    Jkind.intersection_or_error ~type_equal ~jkind_of_type ~reason env
+      jkind1 jkind2
 
 (* See comment on [jkind_unification_mode] *)
 let unification_jkind_check uenv ty jkind =
@@ -3291,7 +3296,7 @@ let equivalent_with_nolabels l1 l2 =
    not matter, so a jkind extracted from a type_declaration does
    not need to be substed *)
 let has_jkind_intersection_tk env ty jkind =
-  Jkind.has_intersection (type_jkind env ty) jkind
+  Jkind.has_intersection env (type_jkind env ty) jkind
 
 (* [mcomp] tests if two types are "compatible" -- i.e., if they could ever
    unify.  (This is distinct from [eqtype], which checks if two types *are*
@@ -3461,7 +3466,7 @@ and mcomp_type_decl type_pairs env p1 p2 tl1 tl2 =
     let decl = Env.find_type p1 env in
     let decl' = Env.find_type p2 env in
     let check_jkinds () =
-      if not (Jkind.has_intersection decl.type_jkind decl'.type_jkind)
+      if not (Jkind.has_intersection env decl.type_jkind decl'.type_jkind)
       then raise Incompatible
     in
     if compatible_paths p1 p2 then begin
@@ -7213,7 +7218,9 @@ let check_decl_jkind env decl jkind =
      and so we leave this optimization for later. *)
   let type_equal = type_equal env in
   let jkind_of_type ty = Some (type_jkind_purely env ty) in
-  match Jkind.sub_jkind_l ~type_equal ~jkind_of_type decl.type_jkind jkind with
+  match
+    Jkind.sub_jkind_l ~type_equal ~jkind_of_type env decl.type_jkind jkind
+  with
   | Ok () -> Ok ()
   | Error _ as err ->
     match decl.type_manifest with
@@ -7222,7 +7229,7 @@ let check_decl_jkind env decl jkind =
       (* CR layouts v2.8: Should this use [type_jkind_purely_if_principal]? I
          think not. *)
       let ty_jkind = type_jkind env ty in
-      match Jkind.sub_jkind_l ~type_equal ~jkind_of_type ty_jkind jkind with
+      match Jkind.sub_jkind_l ~type_equal ~jkind_of_type env ty_jkind jkind with
       | Ok () -> Ok ()
       | Error _ as err -> err
 
@@ -7237,7 +7244,7 @@ let constrain_decl_jkind env decl jkind =
     let type_equal = type_equal env in
     let jkind_of_type ty = Some (type_jkind_purely env ty) in
     match
-      Jkind.sub_or_error ~type_equal ~jkind_of_type decl.type_jkind jkind
+      Jkind.sub_or_error ~type_equal ~jkind_of_type env decl.type_jkind jkind
     with
     | Ok () as ok -> ok
     | Error _ as err ->

@@ -1464,7 +1464,8 @@ let type_declarations ?(equality = false) ~loc env ~mark name
      let jkind_of_type ty = Some (Ctype.type_jkind_purely env ty) in
      Some (Parameter_jkind
              (ty, Jkind.Violation.of_ ~jkind_of_type
-                    (Not_a_subjkind (Jkind.disallow_right original_jkind,
+                    (Not_a_subjkind (env,
+                                     Jkind.disallow_right original_jkind,
                                      Jkind.disallow_left inferred_jkind,
                                      []))))
   | All_good ->

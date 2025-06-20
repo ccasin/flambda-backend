@@ -2054,12 +2054,12 @@ module Jkind_const = struct
     | None -> false
     | Some (t1, t2) -> (
       match t1.base, t2.base with
-      | Kconstr _, _ | _, Kconstr _ ->
-        assert false (* XXX abstract kinds: need equality *)
+      | Kconstr p1, Kconstr p2 -> Path.same p1 p2
+      | Kconstr _, Layout _ | Layout _, Kconstr _ -> false
       | Layout l1, Layout l2 ->
         Jkind_types.Layout.Const.equal l1 l2 &&
         Jkind_mod_bounds.equal t1.mod_bounds t2.mod_bounds
-      )
+    )
 
   let max =
       { base = Layout Jkind_types.Layout.Const.max;
