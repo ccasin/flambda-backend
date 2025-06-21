@@ -1479,6 +1479,18 @@ module Jkind_desc = struct
       with_bounds = No_with_bounds
     }
 
+  (* This assumes no recursive jkinds *)
+  let rec get_layout : 'l 'r. _ -> ('l * 'r) jkind_desc -> _ =
+    fun env t ->
+    match t.base with
+    | Layout l -> Some l
+    | Kconstr p ->
+      match Env.find_jkind p env with
+      | exception Not_found -> None
+      | { jkind_manifest = None; _ } -> None
+      | { jkind_manifest = Some jkind; _ } ->
+        get_layout env jkind.jkind
+
   module Debug_printers = struct
     let t ppf t =
       Base_and_axes.debug_print
@@ -1898,12 +1910,15 @@ let[@inline] normalize ~mode ~jkind_of_type t =
       | _ -> t.ran_out_of_fuel_during_normalize)
   }
 
-let get_layout_defaulting_to_value { jkind = { base; _ }; _ } =
-  match base with
-  | Kconstr _ -> assert false (* XXX abstract kinds *)
-  | Layout l -> Layout.default_to_value_and_get l
+let get_layout_defaulting_to_value env jkind =
+  Jkind_desc.get_layout env jkind
+  |> Option.map Layout.default_to_value_and_get
 
-let default_to_value t = ignore (get_layout_defaulting_to_value t)
+let default_to_value t =
+  (* Expanding unnecessary in the case of a Kconstr, which is constant. *)
+  match t.base with
+  | Kconstr _ -> ()
+  | Layout l -> ignore (Layout.default_to_value_and_get l)
 
 let get t = Jkind_desc.get t.jkind
 
@@ -2485,7 +2500,7 @@ module Violation = struct
         Env.t * (allowed * 'r1) jkind * ('l * 'r2) jkind *
         Sub_failure_reason.t list
         -> violation
-    | No_intersection : 'd jkind * ('l * allowed) jkind -> violation
+    | No_intersection : Env.t * 'd jkind * ('l * allowed) jkind -> violation
 
   type nonrec t =
     { violation : violation;
@@ -2510,12 +2525,12 @@ module Violation = struct
           normalize ~mode:Require_best ~jkind_of_type (disallow_right jkind2)
         in
         Not_a_subjkind (env, jkind1, jkind2, reasons)
-      | No_intersection (jkind1, jkind2) ->
+      | No_intersection (env, jkind1, jkind2) ->
         let jkind1 =
           normalize ~mode:Require_best ~jkind_of_type (disallow_right jkind1)
         in
         (* jkind2 can't have with-bounds, by its type *)
-        No_intersection (jkind1, jkind2)
+        No_intersection (env, jkind1, jkind2)
     in
     { violation; missing_cmi }
 
@@ -2611,16 +2626,17 @@ module Violation = struct
       match violation with
       | Not_a_subjkind (_, k1, k2, _) ->
         k1.ran_out_of_fuel_during_normalize, k2.ran_out_of_fuel_during_normalize
-      | No_intersection (k1, k2) ->
+      | No_intersection (_, k1, k2) ->
         k1.ran_out_of_fuel_during_normalize, k2.ran_out_of_fuel_during_normalize
     in
     if first_ran_out then report_fuel_for_type "first";
     if second_ran_out then report_fuel_for_type "second"
 
   let report_general preamble pp_former former ppf t =
-    let mismatch_type =
+    let env, mismatch_type =
       match t.violation with
       | Not_a_subjkind (env, k1, k2, _) ->
+        env,
         begin
           match
             Base_and_axes.expand_to_checkable_bases env ~allow_any:true
@@ -2632,7 +2648,7 @@ module Violation = struct
             then Mode
             else Layout
         end
-      | No_intersection _ -> Layout
+      | No_intersection (env, _, _) -> env, Layout
     in
     let layout_or_kind =
       match mismatch_type with Mode -> "kind" | Layout -> "layout"
@@ -2646,10 +2662,15 @@ module Violation = struct
       | Kconstr _ -> false
       | Layout l -> has_sort_var_layout l
     in
-    let format_base_or_kind ppf jkind =
+    let format_base_or_kind (type l r) ppf (jkind : (l * r) jkind) =
       match mismatch_type with
       | Mode -> Format.fprintf ppf "@,%a" format jkind
-      | Layout -> Base.format Layout.format ppf jkind.jkind.base
+      | Layout -> begin
+          (* We're printing an error about layouts - try to expand. *)
+          match Jkind_desc.get_layout env jkind.jkind with
+          | Some l -> Layout.format ppf l
+          | None -> Format.fprintf ppf "abstract"
+        end
     in
     let subjkind_format verb k2 =
       if has_sort_var (get k2).base
@@ -2681,7 +2702,7 @@ module Violation = struct
             dprintf "an unknown %s" layout_or_kind,
             subjkind_format "might not be" k2,
             Some p ))
-      | { violation = No_intersection (k1, k2); missing_cmi } ->
+      | { violation = No_intersection (_, k1, k2); missing_cmi } ->
         assert (Option.is_none missing_cmi);
         ( Pack_jkind k1,
           Pack_jkind k2,
@@ -2814,7 +2835,7 @@ let has_intersection env t1 t2 =
 
 let intersection_or_error ~type_equal ~jkind_of_type ~reason env t1 t2 =
   match Jkind_desc.intersection env t1.jkind t2.jkind with
-  | None -> Error (Violation.of_ ~jkind_of_type (No_intersection (t1, t2)))
+  | None -> Error (Violation.of_ ~jkind_of_type (No_intersection (env, t1, t2)))
   | Some jkind ->
     Ok
       { jkind;
