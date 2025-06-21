@@ -186,7 +186,8 @@ module Violation : sig
         * ('l * 'r2) Types.jkind
         * Sub_failure_reason.t list
         -> violation
-    | No_intersection : 'd Types.jkind * ('l * allowed) Types.jkind -> violation
+    | No_intersection :
+        Env.t * 'd Types.jkind * ('l * allowed) Types.jkind -> violation
 
   type t
 
@@ -555,8 +556,10 @@ end
 val get : 'd Types.jkind -> 'd Desc.t
 
 (** [get_layout_defaulting_to_value] extracts a constant layout, defaulting
-    any sort variable to [value]. *)
-val get_layout_defaulting_to_value : 'd Types.jkind -> Layout.Const.t
+    any sort variable to [value]. Return [None] in the case of an abstract kind.
+*)
+val get_layout_defaulting_to_value :
+  Env.t -> 'd Types.jkind -> Layout.Const.t option
 
 (** [get_const] returns a [Const.t] if the layout has no sort variables,
     returning [None] otherwise *)

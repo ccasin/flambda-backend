@@ -1661,9 +1661,9 @@ module Element_repr = struct
   let classify env loc ty jkind =
     if is_float env ty then Float_element
     else
-      let layout = Jkind.get_layout_defaulting_to_value jkind in
+      let layout = Jkind.get_layout_defaulting_to_value env jkind in
       let sort =
-        match Jkind.Layout.Const.get_sort layout with
+        match Option.bind layout Jkind.Layout.Const.get_sort with
         | None ->
           Misc.fatal_error "Element_repr.classify: unexpected abstract layout"
         | Some s -> s
