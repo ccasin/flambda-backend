@@ -1308,7 +1308,7 @@ and module_binding =
 
 and jkind_annotation_desc =
   | Default
-  | Abbreviation of string
+  | Abbreviation of Longident.t
   (* CR layouts v2.8: [mod] can have only layouts on the left, not
      full kind annotations. We may want to narrow this type some. *)
   | Mod of jkind_annotation * modes

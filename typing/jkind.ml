@@ -1264,27 +1264,27 @@ module Const = struct
     | Abbreviation name ->
       (* CR layouts v2.8: move this to predef *)
       (match name with
-      | "any" -> Builtin.any.jkind
-      | "any_non_null" -> Builtin.any_non_null.jkind
-      | "value_or_null" -> Builtin.value_or_null.jkind
-      | "value" -> Builtin.value.jkind
-      | "void" -> Builtin.void.jkind
-      | "immediate64" -> Builtin.immediate64.jkind
-      | "immediate" -> Builtin.immediate.jkind
-      | "immediate_or_null" -> Builtin.immediate_or_null.jkind
-      | "float64" -> Builtin.float64.jkind
-      | "float32" -> Builtin.float32.jkind
-      | "word" -> Builtin.word.jkind
-      | "bits32" -> Builtin.bits32.jkind
-      | "bits64" -> Builtin.bits64.jkind
-      | "vec128" -> Builtin.vec128.jkind
-      | "immutable_data" -> Builtin.immutable_data.jkind
-      | "sync_data" -> Builtin.sync_data.jkind
-      | "mutable_data" -> Builtin.mutable_data.jkind
+      | Lident "any" -> Builtin.any.jkind
+      | Lident "any_non_null" -> Builtin.any_non_null.jkind
+      | Lident "value_or_null" -> Builtin.value_or_null.jkind
+      | Lident "value" -> Builtin.value.jkind
+      | Lident "void" -> Builtin.void.jkind
+      | Lident "immediate64" -> Builtin.immediate64.jkind
+      | Lident "immediate" -> Builtin.immediate.jkind
+      | Lident "immediate_or_null" -> Builtin.immediate_or_null.jkind
+      | Lident "float64" -> Builtin.float64.jkind
+      | Lident "float32" -> Builtin.float32.jkind
+      | Lident "word" -> Builtin.word.jkind
+      | Lident "bits32" -> Builtin.bits32.jkind
+      | Lident "bits64" -> Builtin.bits64.jkind
+      | Lident "vec128" -> Builtin.vec128.jkind
+      | Lident "immutable_data" -> Builtin.immutable_data.jkind
+      | Lident "sync_data" -> Builtin.sync_data.jkind
+      | Lident "mutable_data" -> Builtin.mutable_data.jkind
       (* XXX all these cases should be this lookup. *)
       (* XXX Abbreviation needs to take an lident *)
       | _ ->
-        let p, _ = Env.lookup_jkind ~loc (Lident name) env in
+        let p, _ = Env.lookup_jkind ~loc name env in
         abstract p)
       |> allow_left |> allow_right
     | Mod (base, modifiers) ->
@@ -1293,12 +1293,7 @@ module Const = struct
       let mod_bounds =
         Mod_bounds.meet base.mod_bounds (Typemode.transl_mod_bounds modifiers)
       in
-      let layout =
-        match base.base with
-        | Kconstr _ -> assert false (* XXX abstract kinds *)
-        | Layout l -> l
-      in
-      { base = Layout layout; mod_bounds; with_bounds = No_with_bounds }
+      { base = base.base; mod_bounds; with_bounds = No_with_bounds }
     | Product ts ->
       let jkinds =
         List.map (of_user_written_annotation_unchecked_level env context) ts
@@ -1313,12 +1308,7 @@ module Const = struct
         let modality =
           Typemode.transl_modalities ~maturity:Stable Immutable modalities
         in
-        let layout =
-          match base.base with
-          | Kconstr _ -> assert false (* XXX abstract kinds *)
-          | Layout l -> l
-        in
-        { base = Layout layout;
+        { base = base.base;
           mod_bounds = base.mod_bounds;
           with_bounds =
             With_bounds.add_modality ~modality ~relevant_for_shallow:`Irrelevant

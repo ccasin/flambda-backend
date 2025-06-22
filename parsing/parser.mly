@@ -3952,7 +3952,7 @@ jkind_desc:
   | jkind_annotation WITH core_type optional_atat_modalities_expr {
       With ($1, $3, $4)
     }
-  | ident {
+  | type_longident {
       Abbreviation $1
     }
   | KIND_OF ty=core_type {

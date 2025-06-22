@@ -943,7 +943,7 @@ let default_mapper =
       let pjka_desc =
         match pjka_desc with
         | Default -> Default
-        | Abbreviation (s : string) -> Abbreviation s
+        | Abbreviation (s : Longident.t) -> Abbreviation s
         | Mod (t, mode_list) ->
           Mod (this.jkind_annotation this t, this.modes this mode_list)
         | With (t, ty, modalities) ->

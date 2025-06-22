@@ -451,7 +451,7 @@ and type_with_label ctxt f (label, c, mode) =
 
 and jkind_annotation ?(nested = false) ctxt f k = match k.pjka_desc with
   | Default -> pp f "_"
-  | Abbreviation s -> pp f "%s" s
+  | Abbreviation s -> longident f s
   | Mod (t, modes) ->
      begin match modes with
      | [] -> Misc.fatal_error "malformed jkind annotation"

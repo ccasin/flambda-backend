@@ -2551,7 +2551,7 @@ module Jkind_jkind = struct
   let mk_annot name =
     Some Parsetree.{
       pjka_loc = Location.none;
-      pjka_desc = Abbreviation name
+      pjka_desc = Abbreviation (Lident name)
     }
 
   let mark_best (type l r) (t : (l * r) jkind) =
@@ -2781,7 +2781,7 @@ module Jkind_builtins_memo = struct
         const_jkind
         ~quality
         ~annotation:(Some { pjka_loc = Location.none;
-                            pjka_desc = Abbreviation builtin.name })
+                            pjka_desc = Abbreviation (Lident builtin.name) })
         ~why:Jkind_intf.History.Imported)
 
   let best_builtins : (allowed * disallowed) builtins = make_builtins Best

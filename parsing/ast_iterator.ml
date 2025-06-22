@@ -841,7 +841,7 @@ let default_iterator =
          this.location this pjka_loc;
          match pjka_desc with
          | Default -> ()
-         | Abbreviation (_ : string) -> ()
+         | Abbreviation (_ : Longident.t) -> ()
          | Mod (t, mode_list) ->
              this.jkind_annotation this t;
              this.modes this mode_list

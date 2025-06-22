@@ -507,7 +507,7 @@ and jkind_annotation i ppf (jkind : jkind_annotation) =
   match jkind.pjka_desc with
   | Default -> line i ppf "Default\n"
   | Abbreviation jkind ->
-      line i ppf "Abbreviation \"%s\"\n" jkind
+      line i ppf "Abbreviation \"%a\"\n" fmt_longident jkind
   | Mod (jkind, m) ->
       line i ppf "Mod\n";
       jkind_annotation (i+1) ppf jkind;

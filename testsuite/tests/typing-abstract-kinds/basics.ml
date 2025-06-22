@@ -89,7 +89,7 @@ sad
 (***********************************************)
 (* Test 5: Abstract kinds are a subkind of max *)
 
-kind k
+kind_ k
 type t : k
 
 type s : any = t
@@ -134,7 +134,7 @@ sad
 (* Test 7: expanding through aliases takes the meet of the bounds *)
 
 module A = struct
-  kind_ ka : float64
+  kind_ ka = float64
 end
 
 module B = struct
@@ -186,7 +186,7 @@ sad
 module Spicy = struct
   kind_ value = float64 & float64
 
-  type t : value = #(float# & float#)
+  type t : value = #(float# * float#)
 end
 [%%expect{|
 happy
@@ -253,7 +253,7 @@ end = struct
   kind_ k = value
 end
 
-and module M2 : sig
+and M2 : sig
   type t : M1.k
 end = struct
   type t = string
@@ -269,7 +269,7 @@ end = struct
   kind_ k = M2.k
 end
 
-and module M2 : sig
+and M2 : sig
   kind_ k
 end = struct
   kind_ k
@@ -285,7 +285,7 @@ end = struct
   kind_ k = M2.k
 end
 
-and module M2 : sig
+and M2 : sig
   kind_ k
 end = struct
   kind_ k = M1.k
