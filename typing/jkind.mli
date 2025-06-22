@@ -593,6 +593,7 @@ val extract_layout : Env.t -> 'd Types.jkind -> (Sort.t Layout.t, Path.t) result
 (** Gets the mode crossing for types of this jkind. *)
 val get_mode_crossing :
   jkind_of_type:(Types.type_expr -> Types.jkind_l option) ->
+  Env.t ->
   'd Types.jkind ->
   Mode.Crossing.t
 

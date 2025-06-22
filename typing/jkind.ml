@@ -571,8 +571,7 @@ module Base = struct
     | Kconstr p -> Path.name p
 
   (* This is only correct on bases that come from the output of
-     [Base_and_axes.expand_to_checkable_bases]. See comment on that function for
-     the relevant invariants. *)
+     [Base_and_axes.expand_to_checkable_bases]. See comment on that function. *)
   let sub_expanded base1 base2 =
     match base1, base2 with
     | Layout l1, Layout l2 -> Layout.sub l1 l2
@@ -583,8 +582,7 @@ module Base = struct
         "Jkind.Base.sub_expanded: [expand_to_checkable_bases] spec wrong"
 
   (* This is only correct on bases that come from the output of
-     [Base_and_axes.expand_to_checkable_bases]. See comment on that function for
-     the relevant invariants. *)
+     [Base_and_axes.expand_to_checkable_bases]. See comment on that function. *)
   let intersection_expanded base1 base2 =
     match base1, base2 with
     | Layout l1, Layout l2 ->
@@ -624,22 +622,57 @@ module Base_and_axes = struct
               (* jkind is an lr kind and therefore has no with bounds. *)
           })
 
+  (* See comment on [expand_to_checkable_bases] *)
+  type allow_any_policy =
+    | Always
+    | Never
+    | Check_bounds_for_sub
+
   (* Given two jkind_descs, expand their bases until they can be meaningfully
      compared.  We stop in one of three cases:
      - Both bases are [Kconstr]s with identical paths.
      - Both bases are [Layout]s.
-     - [allow_any] is true and the right kind has layout any
+     - The right kind has layout [any], and the [allow_any] policy allows it.
 
      This is the first step in checking equality and subkinding - no point in
      comparing the bounds if we don't have a way to compare what the bounds are
      modifying.
 
-     This assumes jkinds are not recursive, and can infinite loop if they are.
+     What's up with [allow_any]? Well, different callers just want different
+     things here:
+     - [Never]: For checking equality, [any] on the right is never good enough
+       if the left is still abstract.
+     - [Always]: For checking intersection, [any] on the right is always good
+       enough.
+     - [Check_bounds_for_sub]: For checking sub, [any] on the right is good
+       enough if the mod bounds on the left are less than or equal to the mod
+       bounds on the right.
+
+     The correctness of the [Check_bounds_for_sub] case is a little subtle:
+     - It relies the global invariant that kind aliases never refer to kinds
+       that have with bounds. If they did, it would always be necessary in to
+       fully expand the left kind, as we might learn information that falsifies
+       the bounds comparison.
+     - It might require normalizing any with kinds on the right, since those
+       make the bounds on the right higher. This can only happen from
+       [sub_jkind_l], since [sub] doesn't let an l-kind on the right.
+       We can never learn with kinds while expanding, so it's sufficient for
+       [sub_jkind_l] to normalize before calling this function.
   *)
   let rec expand_to_checkable_bases env ~allow_any t1 t2 =
     match t1.base, t2.base with
     | Layout _, Layout _ -> Some (t1, t2)
-    | _, Layout Layout.Any when allow_any -> Some (t1, t2)
+    | Kconstr _, Layout Layout.Any -> (
+      match allow_any with
+      | Always -> Some (t1, t2)
+      | Check_bounds_for_sub
+        when Sub_result.is_le
+               (Mod_bounds.less_or_equal t1.mod_bounds t2.mod_bounds) ->
+        Some (t1, t2)
+      | Never | Check_bounds_for_sub -> (
+        match expand_base_once env t1 with
+        | None -> None
+        | Some t1 -> expand_to_checkable_bases env ~allow_any t1 t2))
     | Kconstr p1, Kconstr p2 when Path.same p1 p2 -> Some (t1, t2)
     | Kconstr _, Layout _ | Layout _, Kconstr _ | Kconstr _, Kconstr _ -> (
       match expand_base_once env t1, expand_base_once env t2 with
@@ -649,7 +682,7 @@ module Base_and_axes = struct
       | Some t1, Some t2 -> expand_to_checkable_bases env ~allow_any t1 t2)
 
   let equal env eq_layout t1 t2 =
-    match expand_to_checkable_bases env ~allow_any:false t1 t2 with
+    match expand_to_checkable_bases env ~allow_any:Never t1 t2 with
     | None -> false
     | Some
         ( { base = base1;
@@ -670,8 +703,14 @@ module Base_and_axes = struct
         Misc.fatal_error
           "Jkind.Base_and_axes.equal: [expand_to_checkable_bases] spec wrong")
 
+  let rec fully_expand_aliases env (t : (_, _) base_and_axes) =
+    match expand_base_once env t with
+    | None -> t
+    | Some t -> fully_expand_aliases env t
+
   let rec get_layout_result : 'l 'r. _ -> (_, 'l * 'r) base_and_axes -> _ =
    fun env t ->
+    (* Don't use [fully_expand_aliases] to avoid computing anything on bounds *)
     match t.base with
     | Layout l -> Ok l
     | Kconstr p -> (
@@ -1409,7 +1448,8 @@ module Jkind_desc = struct
   let sub (type l r) ~type_equal:_ ~jkind_of_type env
       (desc_1 : (allowed * r) jkind_desc) (desc_2 : (l * allowed) jkind_desc) =
     match
-      Base_and_axes.expand_to_checkable_bases env ~allow_any:true desc_1 desc_2
+      Base_and_axes.expand_to_checkable_bases env
+        ~allow_any:Check_bounds_for_sub desc_1 desc_2
     with
     | None -> Sub_result.(Not_le [Layout_disagreement])
     | Some
@@ -1434,7 +1474,7 @@ module Jkind_desc = struct
 
   let intersection env desc1 desc2 =
     match
-      Base_and_axes.expand_to_checkable_bases env ~allow_any:true desc1 desc2
+      Base_and_axes.expand_to_checkable_bases env ~allow_any:Always desc1 desc2
     with
     | None -> None
     | Some
@@ -1452,7 +1492,7 @@ module Jkind_desc = struct
 
   let sub_layout env desc1 desc2 =
     match
-      Base_and_axes.expand_to_checkable_bases env ~allow_any:true desc1 desc2
+      Base_and_axes.expand_to_checkable_bases env ~allow_any:Always desc1 desc2
     with
     | None -> Sub_result.(Not_le [Layout_disagreement])
     | Some
@@ -1933,12 +1973,16 @@ let get_layout env jk : Layout.Const.t option =
 
 let extract_layout env jk = Base_and_axes.get_layout_result env jk.jkind
 
-let get_modal_bounds (type l r) ~jkind_of_type (jk : (l * r) jkind) =
+let get_modal_bounds (type l r) ~jkind_of_type env (jk : (l * r) jkind) =
+  (* It is sad that we must eagerly fully expand the kind here, which might
+     involve loading a bunch of cmis. But our eager approach to mode crossing
+     demands it. *)
+  let jk = Base_and_axes.fully_expand_aliases env jk.jkind in
   let ( ({ base = _; mod_bounds; with_bounds = No_with_bounds } :
           (_ * allowed) jkind_desc),
         _ ) =
     Base_and_axes.normalize ~mode:Ignore_best
-      ~skip_axes:Axis_set.all_nonmodal_axes ~jkind_of_type jk.jkind
+      ~skip_axes:Axis_set.all_nonmodal_axes ~jkind_of_type jk
   in
   Mod_bounds.
     { comonadic =
@@ -1955,8 +1999,8 @@ let get_modal_bounds (type l r) ~jkind_of_type (jk : (l * r) jkind) =
         }
     }
 
-let get_mode_crossing (type l r) ~jkind_of_type (jk : (l * r) jkind) =
-  let bounds = get_modal_bounds ~jkind_of_type jk in
+let get_mode_crossing (type l r) ~jkind_of_type env (jk : (l * r) jkind) =
+  let bounds = get_modal_bounds ~jkind_of_type env jk in
   Mode.Crossing.of_bounds bounds
 
 let to_unsafe_mode_crossing jkind =
@@ -2622,8 +2666,8 @@ module Violation = struct
       | Not_a_subjkind (env, k1, k2, _) -> (
         ( env,
           match
-            Base_and_axes.expand_to_checkable_bases env ~allow_any:true k1.jkind
-              k2.jkind
+            Base_and_axes.expand_to_checkable_bases env ~allow_any:Always
+              k1.jkind k2.jkind
           with
           | None -> Kind
           | Some (k1, k2) ->
@@ -2806,7 +2850,7 @@ let combine_histories env ~type_equal ~jkind_of_type reason (Pack_jkind k1)
 let has_intersection env t1 t2 =
   (* Need to check only the layouts: all the axes have bottom elements. *)
   match
-    Base_and_axes.expand_to_checkable_bases env ~allow_any:true t1.jkind
+    Base_and_axes.expand_to_checkable_bases env ~allow_any:Always t1.jkind
       t2.jkind
   with
   | None -> false
@@ -2903,9 +2947,16 @@ let sub_jkind_l ~type_equal ~jkind_of_type ?(allow_any_crossing = false) env sub
   in
   let* sub, super =
     (* Expand and validate bases *)
+    let super =
+      (* Per comment on [expand_to_checkable_bases], we must normalize
+         eagerly if the right kind has layout [any]. *)
+      match super.jkind.base with
+      | Layout Any -> normalize ~mode:Require_best ~jkind_of_type super
+      | Layout _ | Kconstr _ -> super
+    in
     match
-      Base_and_axes.expand_to_checkable_bases env ~allow_any:true sub.jkind
-        super.jkind
+      Base_and_axes.expand_to_checkable_bases env
+        ~allow_any:Check_bounds_for_sub sub.jkind super.jkind
     with
     | None -> Error (normalize_error [Layout_disagreement])
     | Some (sub_jkind, super_jkind) ->

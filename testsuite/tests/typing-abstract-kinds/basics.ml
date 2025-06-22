@@ -159,17 +159,34 @@ type s4 : any = t
 let require_portable (_x : t @ portable) = ()
 let cross_portable : t -> unit = fun x -> require_portable x
 [%%expect{|
-happy
+kind_ k = value mod portable & value mod portable
+type t : k
+type s1 = t
+type s2 = t
+type s3 = t
+type s4 = t
+val require_portable : t @ portable -> unit = <fun>
+val cross_portable : t -> unit = <fun>
 |}]
 
 type s5 : value & value mod global = t
 [%%expect{|
-sad
+Line 1, characters 0-38:
+1 | type s5 : value & value mod global = t
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Error: The kind of type "t" is k
+         because of the definition of t at line 3, characters 0-10.
+       But the kind of type "t" must be a subkind of
+         value mod global & value mod global
+         because of the definition of s5 at line 1, characters 0-38.
 |}]
 
-let cross_local (x : t @ local) = x
+let does_not_cross_local (x : t @ local) : t @ global = x
 [%%expect{|
-sad
+Line 1, characters 56-57:
+1 | let does_not_cross_local (x : t @ local) : t @ global = x
+                                                            ^
+Error: This value escapes its region.
 |}]
 
 (******************************************************************)
@@ -196,12 +213,24 @@ type t : D.kd
 type s1 : float64 mod portable global = t
 type s2 : any mod portable global = t
 [%%expect{|
-happy
+module A : sig kind_ ka = float64 end
+module B : sig kind_ kb = A.ka mod portable end
+module C : sig kind_ kc = B.kb end
+module D : sig kind_ kd = C.kc mod global end
+type t : D.kd
+type s1 = t
+type s2 = t
 |}]
 
 type s3 : any mod contended = t
 [%%expect{|
-sad
+Line 1, characters 0-31:
+1 | type s3 : any mod contended = t
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Error: The kind of type "t" is D.kd
+         because of the definition of t at line 17, characters 0-13.
+       But the kind of type "t" must be a subkind of any mod contended
+         because of the definition of s3 at line 1, characters 0-31.
 |}]
 
 (**************************)
@@ -276,9 +305,9 @@ Line 1, characters 8-14:
             ^^^^^^
 Error: This expression has type "M.t" but an expression was expected of type
          "('a : '_representable_layout_2)"
-       The layout of M.t is abstract
+       The kind of M.t is M.k
          because of the definition of t at line 4, characters 2-12.
-       But the layout of M.t must be representable
+       But the kind of M.t must be representable
          because it's the type of a variable bound by a `let`.
 |}]
 

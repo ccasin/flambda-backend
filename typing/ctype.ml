@@ -5041,7 +5041,7 @@ let relevant_pairs pairs v =
 
 let crossing_of_jkind env jkind =
   let jkind_of_type = type_jkind_purely_if_principal env in
-  Jkind.get_mode_crossing ~jkind_of_type jkind
+  Jkind.get_mode_crossing ~jkind_of_type env jkind
 
 let crossing_of_ty env ?modalities ty =
   let crossing =
