@@ -912,7 +912,6 @@ and 'a class_infos =
 and jkind_declaration =
   { jkind_id: Ident.t;
     jkind_name: string loc;
-    jkind_uid: Uid.t;
     jkind_jkind: Types.jkind_declaration;
     jkind_annotation: Parsetree.jkind_annotation option;
     jkind_attributes: attribute list;

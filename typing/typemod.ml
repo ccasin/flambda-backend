@@ -3467,7 +3467,9 @@ and type_structure ?(toplevel = None) funct_body anchor env sstr =
     | Pstr_jkind x ->
         (* XXX do Signature_names thing to prevent shadowing *)
         let id, env, decl = Typedecl.transl_jkind_decl env x in
-        let shape_map = Shape.Map.add_jkind shape_map id decl.jkind_uid in
+        let shape_map =
+          Shape.Map.add_jkind shape_map id decl.jkind_jkind.jkind_uid
+        in
         let item = Sig_jkind(id, decl.jkind_jkind, Exported) in
         Tstr_jkind decl, [item], shape_map, env
   in

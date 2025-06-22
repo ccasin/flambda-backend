@@ -4138,15 +4138,17 @@ let transl_jkind_decl env
   let jkind_jkind : Types.jkind_declaration =
     { jkind_manifest;
       jkind_attributes = pjkind_attributes;
-      jkind_uid = Uid.internal_not_actually_unique;
+      jkind_uid = uid;
       jkind_loc = loc
     }
   in
-  let env = Env.add_jkind ~check:true ~shape id jkind_jkind env in
+  let env =
+    Builtin_attributes.warning_scope pjkind_attributes
+      (fun () -> Env.add_jkind ~check:true ~shape id jkind_jkind env)
+  in
   let decl : Typedtree.jkind_declaration =
     { jkind_id = id;
       jkind_name = pjkind_name;
-      jkind_uid = uid;
       jkind_jkind;
       jkind_attributes = pjkind_attributes;
       jkind_annotation = pjkind_manifest;

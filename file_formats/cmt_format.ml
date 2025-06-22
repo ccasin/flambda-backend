@@ -104,7 +104,7 @@ let iter_on_declaration f decl =
   | Module_binding mb -> f mb.mb_uid decl
   | Class cd -> f cd.ci_decl.cty_uid decl
   | Class_type ct -> f ct.ci_decl.cty_uid decl
-  | Jkind jd -> f jd.jkind_uid decl
+  | Jkind jd -> f jd.jkind_jkind.jkind_uid decl
 
 let iter_on_declarations ~(f: Shape.Uid.t -> item_declaration -> unit) = {
   Tast_iterator.default_iterator with
