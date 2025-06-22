@@ -136,12 +136,20 @@ type t : k
 
 type s : any = t
 [%%expect{|
-happy
+kind_ k
+type t : k
+type s = t
 |}]
 
 type s : bits32 = t
 [%%expect{|
-sad
+Line 1, characters 0-19:
+1 | type s : bits32 = t
+    ^^^^^^^^^^^^^^^^^^^
+Error: The kind of type "t" is k
+         because of the definition of t at line 2, characters 0-10.
+       But the kind of type "t" must be a subkind of bits32
+         because of the definition of s at line 1, characters 0-19.
 |}]
 
 (******************************************************)
@@ -420,23 +428,36 @@ module type S = sig
   module N : T
   module Q : T with M
 end
+[%%expect{|
+module type S =
+  sig
+    module type T = sig kind_ k end
+    module M : T
+    module N : T
+    module Q : sig kind_ k = M.k end
+  end
+|}]
 
 (* Q.k is known to be M.k *)
 module F(X : S) = struct
   type t : X.Q.k
   type s : X.M.k = t
 end
+[%%expect{|
+module F : functor (X : S) -> sig type t : X.Q.k type s = t end
+|}]
 
 (* N.k is not *)
 module F(X : S) = struct
   type t : X.N.k
   type s : X.M.k = t
 end
-
-
-(* more things:
-
-   deprecated attribute?
-   serialization, missing cmi
-   shapes?
-*)
+[%%expect{|
+Line 3, characters 2-20:
+3 |   type s : X.M.k = t
+      ^^^^^^^^^^^^^^^^^^
+Error: The kind of type "t" is X.N.k
+         because of the definition of t at line 2, characters 2-16.
+       But the kind of type "t" must be a subkind of X.M.k
+         because of the definition of s at line 3, characters 2-20.
+|}]

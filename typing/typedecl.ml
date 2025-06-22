@@ -2401,7 +2401,8 @@ let check_well_founded_decl  ~abs_env env loc path decl to_check =
       ['a], but not ['b]. If it has layout [any], we must conservatively
       consider it to contain both ['a] and ['b].
 
-      Note: We don't yet have [layout_of], so currently only consider [any].
+      Note: We don't yet have [layout_of], so currently only consider [any]. We
+      conseratively treat abstract kinds as [any].
 
    If a path starting from the type expression on the LHS of a declaration
    contains two types with the same head type constructor, and that repeated
@@ -2446,11 +2447,15 @@ let check_unboxed_recursion ~abs_env env loc path0 ty0 to_check =
           (* Determine contained types by layout for decls outside of the
              recursive group *)
           let jkind = (Env.find_type path env).type_jkind in
-          let layout = Option.get (Jkind.get_layout env jkind) in
+          let layout =
+            match Jkind.get_layout env jkind with
+            | None -> Jkind_types.Layout.Const.Any
+            | Some l -> l
+          in
           Contained (contained_parameters tyl layout), parents
-        with Not_found | Invalid_argument _ ->
+        with Not_found ->
           (* Because [to_check path] is false, this decl has already been
-            typechecked, so it's already in [env] with a constant layout. *)
+            typechecked, so it's already in [env]. *)
           Misc.fatal_error "Typedecl.check_unboxed_recursion"
         end
     | _ -> Contained (Ctype.contained_without_boxing env ty), parents
