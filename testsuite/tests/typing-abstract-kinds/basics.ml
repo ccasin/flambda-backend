@@ -22,7 +22,10 @@ end
 module M' : S = M
 
 [%%expect{|
-happy
+jkind_ k
+module type S = sig jkind_ k type t : k end
+module M : sig jkind_ k type t : k end
+module M' : S
 |}]
 
 (****************************************************)
@@ -83,7 +86,18 @@ type t : k
 
 let f (x : t) = x
 [%%expect{|
-sad
+jkind_ k
+type t : k
+Line 5, characters 6-13:
+5 | let f (x : t) = x
+          ^^^^^^^
+Error: This pattern matches values of type "t"
+       but a pattern was expected which matches values of type
+         "('a : '_representable_layout_1)"
+       The layout of t is abstract
+         because of the definition of t at line 3, characters 0-10.
+       But the layout of t must be representable
+         because we must know concretely how to pass a function argument.
 |}]
 
 (***********************************************)
@@ -169,15 +183,23 @@ type t
 
 kind_ k = immutable_data with t
 [%%expect{|
-sad
+type t
+Line 3, characters 30-31:
+3 | kind_ k = immutable_data with t
+                                  ^
+Error: 'with' syntax is not allowed on a right mode.
 |}]
+(* XXX better error *)
 
 (************************)
 (* Test 9: no recursion *)
 
 kind_ k_rec = k_rec
 [%%expect{|
-sad
+Line 1, characters 14-19:
+1 | kind_ k_rec = k_rec
+                  ^^^^^
+Error: Unbound jkind "k_rec"
 |}]
 
 (******************************************)
@@ -215,13 +237,21 @@ end = struct
   let f () = "hi mom"
 end
 [%%expect{|
-happy
+module M : sig jkind_ k type t : k val f : unit -> t end
 |}]
 
 (* But be careful - now we don't know enough to call f! *)
 let _ = M.f ()
 [%%expect{|
-sad
+Line 1, characters 8-14:
+1 | let _ = M.f ()
+            ^^^^^^
+Error: This expression has type "M.t" but an expression was expected of type
+         "('a : '_representable_layout_2)"
+       The layout of M.t is abstract
+         because of the definition of t at line 4, characters 2-12.
+       But the layout of M.t must be representable
+         because it's the type of a variable bound by a `let`.
 |}]
 
 (* If you expose the definition, you have to be exact. *)
@@ -231,7 +261,20 @@ end = struct
   kind_ k = immediate
 end
 [%%expect{|
-sad
+Lines 3-5, characters 6-3:
+3 | ......struct
+4 |   kind_ k = immediate
+5 | end
+Error: Signature mismatch:
+       Modules do not match:
+         sig jkind_ k = immediate end
+       is not included in
+         sig jkind_ k = value end
+       Kind declarations do not match:
+         jkind_ k = immediate
+       is not included in
+         jkind_ k = value
+       Their definitions are not equal.
 |}]
 
 module M : sig
@@ -240,7 +283,20 @@ end = struct
   kind_ k = value
 end
 [%%expect{|
-sad
+Lines 3-5, characters 6-3:
+3 | ......struct
+4 |   kind_ k = value
+5 | end
+Error: Signature mismatch:
+       Modules do not match:
+         sig jkind_ k = value end
+       is not included in
+         sig jkind_ k = immediate end
+       Kind declarations do not match:
+         jkind_ k = value
+       is not included in
+         jkind_ k = immediate
+       Their definitions are not equal.
 |}]
 
 (******************************)
