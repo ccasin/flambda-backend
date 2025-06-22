@@ -1154,7 +1154,7 @@ and print_out_jkind_decl ppf jkd =
       None -> ()
     | Some jkind -> fprintf ppf " =@ %a" print_out_jkind jkind
   in
-  fprintf ppf "@[jkind_ %s%a@]" jkd.ojkind_name print_manifest jkd.ojkind_jkind
+  fprintf ppf "@[kind_ %s%a@]" jkd.ojkind_name print_manifest jkd.ojkind_jkind
 
 let out_constr = ref print_out_constr
 let out_constr_args = ref print_out_constr_args

@@ -29,6 +29,10 @@ let raw_type_expr : (Format.formatter -> type_expr -> unit) ref =
 
 let set_raw_type_expr p = raw_type_expr := p
 
+let printtyp_path = ref (fun _ _ -> assert false)
+
+let set_printtyp_path f = printtyp_path := f
+
 module Nonempty_list = Misc.Nonempty_list
 
 (* A *sort* is the information the middle/back ends need to be able to
@@ -665,6 +669,18 @@ module Base_and_axes = struct
       | Layout _, Kconstr _ | Kconstr _, Layout _ ->
         Misc.fatal_error
           "Jkind.Base_and_axes.equal: [expand_to_checkable_bases] spec wrong")
+
+  let rec get_layout_result : 'l 'r. _ -> (_, 'l * 'r) base_and_axes -> _ =
+   fun env t ->
+    match t.base with
+    | Layout l -> Ok l
+    | Kconstr p -> (
+      match Env.find_jkind p env with
+      | exception Not_found -> Error p
+      | { jkind_manifest = None; _ } -> Error p
+      | { jkind_manifest = Some jkind; _ } -> get_layout_result env jkind.jkind)
+
+  let get_layout env t = get_layout_result env t |> Result.to_option
 
   let debug_print format_layout ppf { base; mod_bounds; with_bounds } =
     Format.fprintf ppf "{ base = %a;@ mod_bounds = %a;@ with_bounds = %a }"
@@ -1366,7 +1382,7 @@ module Desc = struct
     let open Format in
     let rec format_desc ~nested ppf (t : _ t) =
       match (t.base : Sort.Flat.t Layout.t jkind_base) with
-      | Kconstr p -> Path.print ppf p
+      | Kconstr p -> !printtyp_path ppf p
       | Layout (Sort (Var n)) ->
         fprintf ppf "'s%d" (Sort.Var.get_print_number n)
       (* Analyze a product before calling [get_const]: the machinery in
@@ -1462,17 +1478,6 @@ module Jkind_desc = struct
       mod_bounds = Mod_bounds.max;
       with_bounds = No_with_bounds
     }
-
-  (* This assumes no recursive jkinds *)
-  let rec get_layout : 'l 'r. _ -> ('l * 'r) jkind_desc -> _ =
-   fun env t ->
-    match t.base with
-    | Layout l -> Some l
-    | Kconstr p -> (
-      match Env.find_jkind p env with
-      | exception Not_found -> None
-      | { jkind_manifest = None; _ } -> None
-      | { jkind_manifest = Some jkind; _ } -> get_layout env jkind.jkind)
 
   module Debug_printers = struct
     let t ppf t =
@@ -1895,7 +1900,7 @@ let[@inline] normalize ~mode ~jkind_of_type t =
   }
 
 let get_layout_defaulting_to_value env jkind =
-  Jkind_desc.get_layout env jkind.jkind
+  Base_and_axes.get_layout env jkind.jkind
   |> Option.map Layout.default_to_value_and_get
 
 let default_to_value t =
@@ -1922,15 +1927,11 @@ let sort_of_jkind (t : jkind_l) : sort =
   in
   sort_of_layout layout
 
-let get_layout jk : Layout.Const.t option =
-  match jk.jkind.base with
-  | Kconstr _ -> assert false (* XXX abstract kinds *)
-  | Layout l -> Layout.get_const l
+let get_layout env jk : Layout.Const.t option =
+  let layout = Base_and_axes.get_layout env jk.jkind in
+  Option.bind layout Layout.get_const
 
-let extract_layout jk =
-  match jk.jkind.base with
-  | Kconstr _ -> assert false (* XXX abstract kinds *)
-  | Layout l -> l
+let extract_layout env jk = Base_and_axes.get_layout_result env jk.jkind
 
 let get_modal_bounds (type l r) ~jkind_of_type (jk : (l * r) jkind) =
   let ( ({ base = _; mod_bounds; with_bounds = No_with_bounds } :
@@ -2090,10 +2091,6 @@ let decompose_product ({ jkind; _ } as jk) =
    off spelled [value]. Possibly remove [jkind.annotation], but only after
    we have a proper printing story. *)
 let format ppf jkind = Desc.format ppf (Jkind_desc.get jkind.jkind)
-
-let printtyp_path = ref (fun _ _ -> assert false)
-
-let set_printtyp_path f = printtyp_path := f
 
 module Report_missing_cmi : sig
   (* used both in format_history and in Violation.report_general *)
@@ -2525,6 +2522,7 @@ module Violation = struct
   type locale =
     | Mode
     | Layout
+    | Kind
 
   let report_reason ppf violation =
     (* Print out per-axis information about why the error occurred. This only
@@ -2627,7 +2625,7 @@ module Violation = struct
             Base_and_axes.expand_to_checkable_bases env ~allow_any:true k1.jkind
               k2.jkind
           with
-          | None -> Layout
+          | None -> Kind
           | Some (k1, k2) ->
             if Sub_result.is_le (Base.sub_expanded k1.base k2.base)
             then Mode
@@ -2635,7 +2633,7 @@ module Violation = struct
       | No_intersection (env, _, _) -> env, Layout
     in
     let layout_or_kind =
-      match mismatch_type with Mode -> "kind" | Layout -> "layout"
+      match mismatch_type with Mode | Kind -> "kind" | Layout -> "layout"
     in
     let rec has_sort_var_layout : Sort.Flat.t Layout.t -> bool = function
       | Sort (Var _) -> true
@@ -2648,10 +2646,10 @@ module Violation = struct
     in
     let format_base_or_kind (type l r) ppf (jkind : (l * r) jkind) =
       match mismatch_type with
-      | Mode -> Format.fprintf ppf "@,%a" format jkind
+      | Mode | Kind -> Format.fprintf ppf "@,%a" format jkind
       | Layout -> (
         (* We're printing an error about layouts - try to expand. *)
-        match Jkind_desc.get_layout env jkind.jkind with
+        match Base_and_axes.get_layout env jkind.jkind with
         | Some l -> Layout.format ppf l
         | None -> Format.fprintf ppf "abstract")
     in
@@ -2996,11 +2994,12 @@ let is_void_defaulting = function
 let is_obviously_max = function
   (* This doesn't do any mutation because mutating a sort variable can't make it
      any, and modal upper bounds are constant. *)
-  | { jkind = { base = Kconstr _; _ }; _ } ->
-    assert false (* XXX abstract kinds *)
   | { jkind = { base = Layout Any; mod_bounds; with_bounds = _ }; _ } ->
     Mod_bounds.is_max mod_bounds
-  | _ -> false
+  | { jkind = { base = Layout _ | Kconstr _; mod_bounds = _; with_bounds = _ };
+      _
+    } ->
+    false
 
 let has_layout_any jkind =
   match jkind.jkind.base with

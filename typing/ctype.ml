@@ -2290,9 +2290,18 @@ let rec estimate_type_jkind ~expand_component env ty =
         just to throw most of it away will go away once we get [layout_of]. *)
      let layouts =
        List.map (fun (ty, _modality (* ignore; we just care about layout *)) ->
-         estimate_type_jkind ~expand_component env ty |>
-         Jkind.extract_layout)
-         tys_modalities
+         match
+           Jkind.extract_layout env
+             (estimate_type_jkind ~expand_component env ty)
+         with
+         | Ok l -> l
+         | Error _ -> Jkind_types.Layout.Any
+           (* This is really pretty bad, but the best we can do until
+              [layout_of].  There's no way to reliably prevent the user from
+              reaching this case by checking at product creation time, because
+              you can always have a type variable that later gets filled in with
+              a type with an abstract kind. *)
+       ) tys_modalities
      in
      Jkind.Builtin.product
        ~why:Unboxed_tuple tys_modalities layouts |>
@@ -2682,7 +2691,7 @@ let check_and_update_generalized_ty_jkind ?name ~loc env ty =
       let jkind_of_type = type_jkind_purely_if_principal env in
       let ext = Jkind.get_externality_upper_bound ~jkind_of_type jkind in
       Jkind_axis.Externality.le ext External64 &&
-      match Jkind.get_layout jkind with
+      match Jkind.get_layout env jkind with
       | Some (Base Value) | None -> true
       | _ -> false
     in

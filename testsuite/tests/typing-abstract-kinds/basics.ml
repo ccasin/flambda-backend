@@ -22,9 +22,9 @@ end
 module M' : S = M
 
 [%%expect{|
-jkind_ k
-module type S = sig jkind_ k type t : k end
-module M : sig jkind_ k type t : k end
+kind_ k
+module type S = sig kind_ k type t : k end
+module M : sig kind_ k type t : k end
 module M' : S
 |}]
 
@@ -46,35 +46,63 @@ end
 module M' : S = M
 
 [%%expect{|
-happy
+kind_ k = immutable_data
+module type S = sig kind_ k = float64 type t : k end
+module M : sig kind_ k = float64 type t : k end
+module M' : S
 |}]
 
-(****************************************************)
-(* Test 3: Abstract kinds are no kind in particular *)
+(*************************************************************)
+(* Test 3: Abstract kinds are no concrete kind in particular *)
 
 kind_ k
 [%%expect{|
-happy
+kind_ k
 |}]
 
 type t : k = int
 [%%expect{|
-sad
+Line 1, characters 0-16:
+1 | type t : k = int
+    ^^^^^^^^^^^^^^^^
+Error: The kind of type "int" is immediate
+         because it is the primitive type int.
+       But the kind of type "int" must be a subkind of k
+         because of the definition of t at line 1, characters 0-16.
 |}]
 
 type t : k = float#
 [%%expect{|
-sad
+Line 1, characters 0-19:
+1 | type t : k = float#
+    ^^^^^^^^^^^^^^^^^^^
+Error: The kind of type "float#" is float64 mod everything
+         because it is the unboxed version of the primitive type float.
+       But the kind of type "float#" must be a subkind of k
+         because of the definition of t at line 1, characters 0-19.
 |}]
 
 type t : k = int64#
 [%%expect{|
-sad
+Line 1, characters 0-19:
+1 | type t : k = int64#
+    ^^^^^^^^^^^^^^^^^^^
+Error: The kind of type "int64#" is bits64 mod everything
+         because it is the unboxed version of the primitive type int64.
+       But the kind of type "int64#" must be a subkind of k
+         because of the definition of t at line 1, characters 0-19.
 |}]
 
 type t : k = #(float# * int64#)
 [%%expect{|
-sad
+Line 1, characters 0-31:
+1 | type t : k = #(float# * int64#)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Error: The kind of type "#(float# * int64#)" is
+         float64 mod everything & bits64 mod everything
+         because it is an unboxed tuple.
+       But the kind of type "#(float# * int64#)" must be a subkind of k
+         because of the definition of t at line 1, characters 0-31.
 |}]
 
 (************************************************)
@@ -86,7 +114,7 @@ type t : k
 
 let f (x : t) = x
 [%%expect{|
-jkind_ k
+kind_ k
 type t : k
 Line 5, characters 6-13:
 5 | let f (x : t) = x
@@ -94,9 +122,9 @@ Line 5, characters 6-13:
 Error: This pattern matches values of type "t"
        but a pattern was expected which matches values of type
          "('a : '_representable_layout_1)"
-       The layout of t is abstract
+       The kind of t is k
          because of the definition of t at line 3, characters 0-10.
-       But the layout of t must be representable
+       But the kind of t must be representable
          because we must know concretely how to pass a function argument.
 |}]
 
@@ -237,7 +265,7 @@ end = struct
   let f () = "hi mom"
 end
 [%%expect{|
-module M : sig jkind_ k type t : k val f : unit -> t end
+module M : sig kind_ k type t : k val f : unit -> t end
 |}]
 
 (* But be careful - now we don't know enough to call f! *)
@@ -267,13 +295,13 @@ Lines 3-5, characters 6-3:
 5 | end
 Error: Signature mismatch:
        Modules do not match:
-         sig jkind_ k = immediate end
+         sig kind_ k = immediate end
        is not included in
-         sig jkind_ k = value end
+         sig kind_ k = value end
        Kind declarations do not match:
-         jkind_ k = immediate
+         kind_ k = immediate
        is not included in
-         jkind_ k = value
+         kind_ k = value
        Their definitions are not equal.
 |}]
 
@@ -289,13 +317,13 @@ Lines 3-5, characters 6-3:
 5 | end
 Error: Signature mismatch:
        Modules do not match:
-         sig jkind_ k = value end
+         sig kind_ k = value end
        is not included in
-         sig jkind_ k = immediate end
+         sig kind_ k = immediate end
        Kind declarations do not match:
-         jkind_ k = value
+         kind_ k = value
        is not included in
-         jkind_ k = immediate
+         kind_ k = immediate
        Their definitions are not equal.
 |}]
 
@@ -350,35 +378,12 @@ end
 sad
 |}]
 
-(*********************************)
-(* Test 13: Unused kind warnings *)
-
-(* The warning exists *)
-module M : sig end = struct
-  kind_ k
-end
-[%%expect{|
-sad
-|}]
-
-(* You can suppress it *)
-module M : sig end = struct
-  kind_ k [@@warning "-191"]
-end
-[%%expect{|
-happy
-|}]
-
-module M : sig end = struct
-  [@@@warning "-191"]
-  kind_ k
-end
 [%%expect{|
 happy
 |}]
 
 (**************************)
-(* Test 14: Strengthening *)
+(* Test 13: Strengthening *)
 
 module type S = sig
   module type T = sig kind_ k end

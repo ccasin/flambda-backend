@@ -1024,10 +1024,17 @@ let transl_declaration env sdecl (id, uid) =
          See https://github.com/oxcaml/oxcaml/pull/3399. *)
       match kind with
       | Type_record_unboxed_product _ ->
-        begin match Jkind.get_layout jkind with
+        begin match Jkind.get_layout env jkind with
         | Some Any ->
           (* [jkind_default] has just what we need here *)
-          Jkind.set_layout jkind (Jkind.extract_layout jkind_default)
+          let default_layout =
+            match Jkind.extract_layout env jkind_default with
+            | Ok l -> l
+            | Error _ ->
+              Misc.fatal_error
+                "Typedecl.transl_declaration: abstract jkind_default"
+          in
+          Jkind.set_layout jkind default_layout
         | _ -> jkind
         end
       | Type_abstract _ | Type_variant _ | Type_record _
@@ -2439,7 +2446,7 @@ let check_unboxed_recursion ~abs_env env loc path0 ty0 to_check =
           (* Determine contained types by layout for decls outside of the
              recursive group *)
           let jkind = (Env.find_type path env).type_jkind in
-          let layout = Option.get (Jkind.get_layout jkind) in
+          let layout = Option.get (Jkind.get_layout env jkind) in
           Contained (contained_parameters tyl layout), parents
         with Not_found | Invalid_argument _ ->
           (* Because [to_check path] is false, this decl has already been

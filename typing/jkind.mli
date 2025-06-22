@@ -187,7 +187,8 @@ module Violation : sig
         * Sub_failure_reason.t list
         -> violation
     | No_intersection :
-        Env.t * 'd Types.jkind * ('l * allowed) Types.jkind -> violation
+        Env.t * 'd Types.jkind * ('l * allowed) Types.jkind
+        -> violation
 
   type t
 
@@ -581,12 +582,13 @@ val sort_of_jkind : Types.jkind_l -> sort
 
 (** Gets the layout of a jkind; returns [None] if the layout is still unknown.
     Never does mutation. *)
-val get_layout : 'd Types.jkind -> Layout.Const.t option
+val get_layout : Env.t -> 'd Types.jkind -> Layout.Const.t option
 
 (* CR reisenberg: do we need [extract_layout]? *)
 
-(** Gets the layout of a jkind, without looking through sort variables. *)
-val extract_layout : 'd Types.jkind -> Sort.t Layout.t
+(** Gets the layout of a jkind, without looking through sort variables. Returns
+    [Error p] if the kind is abstract (and its layout is therefore unknown). *)
+val extract_layout : Env.t -> 'd Types.jkind -> (Sort.t Layout.t, Path.t) result
 
 (** Gets the mode crossing for types of this jkind. *)
 val get_mode_crossing :
@@ -782,7 +784,10 @@ val sub_or_error :
     bounds at all. *)
 val sub_layout_or_error :
   jkind_of_type:(Types.type_expr -> Types.jkind_l option) ->
-  Env.t -> Types.jkind_l -> Types.jkind_l -> (unit, Violation.t) result
+  Env.t ->
+  Types.jkind_l ->
+  Types.jkind_l ->
+  (unit, Violation.t) result
 
 (** Like [sub], but compares a left jkind against another left jkind.
     Pre-condition: the super jkind must be fully settled; no variables which
