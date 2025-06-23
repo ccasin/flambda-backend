@@ -276,12 +276,21 @@ module Spicy = struct
   type t : value = #(float# * float#)
 end
 [%%expect{|
-happy
+Line 4, characters 2-37:
+4 |   type t : value = #(float# * float#)
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Error: The layout of type "#(float# * float#)" is float64 & float64
+         because it is an unboxed tuple.
+       But the layout of type "#(float# * float#)" must be a sublayout of value
+         because of the definition of t at line 4, characters 2-37.
 |}]
 
 type t : Spicy.value = string
 [%%expect{|
-sad
+Line 1, characters 9-20:
+1 | type t : Spicy.value = string
+             ^^^^^^^^^^^
+Error: Unbound module "Spicy"
 |}]
 
 (**************************************)
@@ -380,7 +389,10 @@ end = struct
   type t = string
 end
 [%%expect{|
-happy
+Line 8, characters 11-15:
+8 |   type t : M1.k
+               ^^^^
+Error: Illegal recursive module reference
 |}]
 
 (* You can use it in a kind def too *)
@@ -396,7 +408,10 @@ end = struct
   kind_ k
 end
 [%%expect{|
-happy
+Line 2, characters 12-16:
+2 |   kind_ k = M2.k
+                ^^^^
+Error: Illegal recursive module reference
 |}]
 
 (* But no recursion *)
@@ -412,11 +427,8 @@ end = struct
   kind_ k = M1.k
 end
 [%%expect{|
-sad
-|}]
-
-[%%expect{|
-happy
+module rec M1 : sig kind_ k end
+and M2 : sig kind_ k end
 |}]
 
 (**************************)

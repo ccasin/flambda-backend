@@ -2613,7 +2613,8 @@ let tree_of_jkind_declaration id decl =
   let ojkind =
     { ojkind_name = Ident.name id
     ; ojkind_jkind =
-        Option.map (fun jkind -> out_jkind_of_desc (Jkind.get jkind))
+        Option.map
+          (fun jkind -> jkind |> Jkind.Desc.of_const |> out_jkind_of_desc)
           decl.jkind_manifest
     }
   in

@@ -144,10 +144,9 @@ and strengthen_lazy_sig' ~aliasable sg p =
         match decl.jkind_manifest with
         | Some _ -> decl
         | None ->
-          let why : Jkind_intf.History.creation_reason =
-            Abstract_creation_reason (Strengthening (id, p))
+          let manif =
+            Some (Jkind.Const.kconstr (Pdot(p, Ident.name id)))
           in
-          let manif = Some (Jkind.of_path ~why (Pdot(p, Ident.name id))) in
           { decl with jkind_manifest = manif }
       in
       Sig_jkind(id, decl, vis) :: strengthen_lazy_sig' ~aliasable rem p

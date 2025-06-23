@@ -549,11 +549,21 @@ let jkind' copy_scope s loc jkind =
   in
   Jkind_jkind.map_type_expr (typexp copy_scope s loc) jkind
 
-let jkind_declaration' copy_scope s decl =
+let jkind_const' s (jkind : jkind_const_desc_lr) =
+  let jkind =
+    match jkind.base with
+    | Kconstr p ->
+      let base = Kconstr (jkind_path s p) in
+      { jkind with base }
+    | Layout _ -> jkind
+  in
+  (* This is an lr jkind, so there are no type expressions to map over *)
+  jkind
+
+let jkind_declaration s decl =
   { jkind_loc = loc s decl.jkind_loc;
     jkind_uid = decl.jkind_uid;
-    jkind_manifest =
-      Option.map (jkind' copy_scope s decl.jkind_loc) decl.jkind_manifest;
+    jkind_manifest = Option.map (jkind_const' s) decl.jkind_manifest;
     jkind_attributes = attrs s decl.jkind_attributes;
   }
 
@@ -603,9 +613,6 @@ let rec type_declaration' copy_scope s decl =
 
 let type_declaration s decl =
   For_copy.with_scope (fun copy_scope -> type_declaration' copy_scope s decl)
-
-let jkind_declaration s decl =
-  For_copy.with_scope (fun copy_scope -> jkind_declaration' copy_scope s decl)
 
 let class_signature copy_scope s loc sign =
   { csig_self = typexp copy_scope s loc sign.csig_self;
@@ -946,7 +953,7 @@ and subst_lazy_signature_item' copy_scope scoping s comp =
   | Sig_class_type(id, d, rs, vis) ->
       Sig_class_type(id, cltype_declaration' copy_scope s d, rs, vis)
   | Sig_jkind(id, d, vis) ->
-      Sig_jkind(id, jkind_declaration' copy_scope s d, vis)
+      Sig_jkind(id, jkind_declaration s d, vis)
 
 and modtype scoping s t =
   t |> lazy_modtype |> subst_lazy_modtype scoping s |> force_modtype

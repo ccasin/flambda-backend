@@ -1539,6 +1539,6 @@ let jkind_declarations ~loc env name
     (* XXX do I need the weird path case here? *)
     Some Manifest_missing
   | Some k1, Some k2 ->
-    if Jkind.equal env k1 k2
+    if Jkind.Const.equal env k1 k2
     then None
     else Some Manifest_mismatch

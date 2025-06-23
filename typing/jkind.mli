@@ -236,7 +236,7 @@ module Const : sig
       The "constant" refers to the fact that there are no sort variables here.
       The existence of [with]-types means, though, that we still need the
       allowance machinery here. *)
-  type 'd t constraint 'd = 'l * 'r
+  type 'd t = 'd Types.jkind_const_desc
 
   include Allowance.Allow_disallow with type (_, _, 'd) sided = 'd t
 
@@ -254,6 +254,17 @@ module Const : sig
       table), but be aware of this if adding new uses.
   *)
   val shallow_no_with_bounds_and_equal : 'd1 t -> 'd2 t -> bool
+
+  (** Creates an abstract jkind, with max with-bounds, from the path. *)
+  val kconstr : Path.t -> (allowed * allowed) t
+
+  val equal : Env.t -> (allowed * allowed) t -> (allowed * allowed) t -> bool
+
+  val of_annotation :
+    Env.t ->
+    context:('l * allowed) History.annotation_context ->
+    Parsetree.jkind_annotation ->
+    ('l * allowed) t
 
   (* CR layouts: Remove this once we have a better story for printing with jkind
      abbreviations. *)
@@ -549,6 +560,8 @@ module Desc : sig
   type 'd t = (Sort.Flat.t Layout.t, 'd) Types.base_and_axes
 
   val get_const : 'd t -> 'd Const.t option
+
+  val of_const : 'd Const.t -> 'd t
 
   val format : Format.formatter -> 'd t -> unit
 end

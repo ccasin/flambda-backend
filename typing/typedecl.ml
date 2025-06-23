@@ -4143,7 +4143,7 @@ let transl_jkind_decl env
   let uid = Uid.mk ~current_unit:(Env.get_unit_name ()) in
   let context = Jkind.History.Jkind_declaration (Pident id) in
   let jkind_manifest =
-    Option.map (fun annot -> Jkind.of_annotation env ~context annot)
+    Option.map (fun annot -> Jkind.Const.of_annotation env ~context annot)
       pjkind_manifest
   in
   let shape = Shape.leaf uid in

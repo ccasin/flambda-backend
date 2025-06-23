@@ -101,7 +101,7 @@ module Example = struct
       pjka_desc =
         With
           ( { pjka_loc = loc;
-              pjka_desc = Abbreviation "value";
+              pjka_desc = Abbreviation (Lident "value");
             }
           , core_type
           , modalities

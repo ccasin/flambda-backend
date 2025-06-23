@@ -39,26 +39,26 @@ Error: Unimplemented kind syntax
 kind_ immediate = value mod everything
 
 [%%expect{|
-jkind_ immediate = immediate_or_null mod non_null separable
+kind_ immediate = immediate_or_null mod non_null separable
 |}]
 
 kind_ immutable_data =
   value mod many contended portable unyielding immutable stateless non_float
 
 [%%expect{|
-jkind_ immutable_data = immutable_data
+kind_ immutable_data = immutable_data
 |}]
 
 kind_ sync_data = value mod many contended portable unyielding stateless non_float
 
 [%%expect{|
-jkind_ sync_data = sync_data
+kind_ sync_data = sync_data
 |}]
 
 kind_ mutable_data = value mod many portable unyielding stateless non_float
 
 [%%expect{|
-jkind_ mutable_data = mutable_data
+kind_ mutable_data = mutable_data
 |}]
 
 module type S = sig
