@@ -1779,7 +1779,7 @@ let rec instance_prim_locals locals mvar_l mvar_y macc (loc, yld) ty =
    No non-generic type variables should be present in [ty] due to it being the
    type of an external declaration. However, the code is written without
    relaying this assumption. *)
-let instance_prim_layout (desc : Primitive.description) ty =
+let instance_prim_layout env (desc : Primitive.description) ty =
   if not desc.prim_is_layout_poly
   then ty, None
   else
@@ -1805,10 +1805,10 @@ let instance_prim_layout (desc : Primitive.description) ty =
          from an outer scope *)
       if level = generic_level && try_mark_node ty then begin
         begin match get_desc ty with
-        | Tvar ({ jkind; _ } as r) when Jkind.has_layout_any jkind ->
+        | Tvar ({ jkind; _ } as r) when Jkind.has_layout_any env jkind ->
           For_copy.redirect_desc copy_scope ty
             (Tvar {r with jkind = get_jkind ()})
-        | Tunivar ({ jkind; _ } as r) when Jkind.has_layout_any jkind ->
+        | Tunivar ({ jkind; _ } as r) when Jkind.has_layout_any env jkind ->
           For_copy.redirect_desc copy_scope ty
             (Tunivar {r with jkind = get_jkind ()})
         | _ -> ()
@@ -1840,8 +1840,8 @@ let instance_prim_mode (desc : Primitive.description) ty =
   else
     ty, None, None
 
-let instance_prim (desc : Primitive.description) ty =
-  let ty, sort = instance_prim_layout desc ty in
+let instance_prim env (desc : Primitive.description) ty =
+  let ty, sort = instance_prim_layout env desc ty in
   let ty, mode_l, mode_y = instance_prim_mode desc ty in
   ty, mode_l, mode_y, sort
 
@@ -2343,7 +2343,7 @@ let rec estimate_type_jkind ~expand_component env ty =
        variables bound in this [Tpoly]. *)
     (* CR layouts v2.8: Consider doing better -- but only once we can write
        down a test case that cares. *)
-    Jkind.round_up ~jkind_of_type |>
+    Jkind.round_up ~jkind_of_type env |>
     Jkind.disallow_right
   | Tof_kind jkind -> Jkind.mark_best jkind
   | Tpackage _ -> Jkind.for_non_float ~why:First_class_module
@@ -2357,7 +2357,7 @@ and close_open_jkind ~expand_component ~is_open env jkind =
     let jkind_of_type ty =
       Some (estimate_type_jkind ~expand_component env ty)
     in
-    Jkind.round_up ~jkind_of_type jkind |> Jkind.disallow_right
+    Jkind.round_up ~jkind_of_type env jkind |> Jkind.disallow_right
   else jkind
 
 let estimate_type_jkind_unwrapped
@@ -2512,14 +2512,14 @@ let constrain_type_jkind ~fixed env ty jkind =
                              (Not_a_subjkind (env, ty's_jkind, jkind,
                                               sub_failure_reasons)))
              in
-             begin match Jkind.decompose_product ty's_jkind,
-                         Jkind.decompose_product jkind with
+             begin match Jkind.decompose_product env ty's_jkind,
+                         Jkind.decompose_product env jkind with
              | Some ty's_jkinds, Some jkinds
                   when List.length ty's_jkinds = num_components
                        && List.length jkinds = num_components ->
                recur ty's_jkinds jkinds
              | Some ty's_jkinds, None
-                  when Jkind.has_layout_any jkind ->
+                  when Jkind.has_layout_any env jkind ->
                (* Even though [jkind] has layout any, it still might have
                   mode-crossing restrictions, so we recur, just duplicating
                   the jkind. *)
@@ -2661,8 +2661,8 @@ let rec intersect_type_jkind ~reason env ty1 jkind2 =
     let type_equal = !type_equal' env in
     let jkind1 = type_jkind env ty1 in
     let jkind_of_type = type_jkind_purely_if_principal env in
-    let jkind1 = Jkind.round_up ~jkind_of_type jkind1 in
-    let jkind2 = Jkind.round_up ~jkind_of_type jkind2 in
+    let jkind1 = Jkind.round_up ~jkind_of_type env jkind1 in
+    let jkind2 = Jkind.round_up ~jkind_of_type env jkind2 in
     (* This is strange, in that we're rounding up and then computing an
        intersection. So we might find an intersection where there isn't really
        one. See the comment above this function arguing why this is OK here. *)
@@ -2689,7 +2689,7 @@ let check_and_update_generalized_ty_jkind ?name ~loc env ty =
          for upstream code. We check both for a known value and something that
          might turn out later to be value. This is the conservative choice. *)
       let jkind_of_type = type_jkind_purely_if_principal env in
-      let ext = Jkind.get_externality_upper_bound ~jkind_of_type jkind in
+      let ext = Jkind.get_externality_upper_bound ~jkind_of_type env jkind in
       Jkind_axis.Externality.le ext External64 &&
       match Jkind.get_layout env jkind with
       | Some (Base Value) | None -> true
@@ -7022,7 +7022,7 @@ let rec nondep_type_decl env mid is_covariant decl =
       (* CR layouts v2.8: This should be done with a proper nondep_jkind. *)
       with Nondep_cannot_erase _ when is_covariant ->
         let jkind_of_type = type_jkind_purely_if_principal env in
-        Jkind.round_up ~jkind_of_type decl.type_jkind |>
+        Jkind.round_up ~jkind_of_type env decl.type_jkind |>
         Jkind.disallow_right
     in
     clear_hash ();

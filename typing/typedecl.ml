@@ -1569,7 +1569,7 @@ let update_label_sorts env loc lbls named =
     List.mapi (fun idx (Types.{ld_type} as lbl) ->
       let jkind = Ctype.type_jkind env ld_type in
       (* Next line guaranteed to be safe because of [check_representable] *)
-      let sort = Jkind.sort_of_jkind jkind in
+      let sort = Jkind.sort_of_jkind env jkind in
       let ld_sort = Jkind.Sort.default_to_value_and_get sort in
       update idx ld_sort;
       {lbl with ld_sort}, jkind
@@ -1596,7 +1596,7 @@ let update_constructor_arguments_sorts env loc cd_args sorts =
       List.mapi (fun idx ({Types.ca_type; _} as arg) ->
           let jkind = Ctype.type_jkind env ca_type in
           (* Next line guaranteed to be safe because of [check_representable] *)
-          let sort = Jkind.sort_of_jkind jkind in
+          let sort = Jkind.sort_of_jkind env jkind in
           let ca_sort = Jkind.Sort.default_to_value_and_get sort in
           update idx ca_sort;
           {arg with ca_sort}, jkind)
@@ -1812,7 +1812,7 @@ let rec update_decl_jkind env dpath decl =
       in
       (* This next line is guaranteed to be OK because of a call to
          [check_representable] *)
-      let sort = Jkind.sort_of_jkind jkind in
+      let sort = Jkind.sort_of_jkind env jkind in
       let ld_sort = Jkind.Sort.default_to_value_and_get sort in
       [{lbl with ld_sort}], Record_unboxed, jkind
     | _, Record_boxed sorts ->
@@ -1920,7 +1920,7 @@ let rec update_decl_jkind env dpath decl =
         match cd_args with
         | Cstr_tuple [{ca_type=ty; _} as arg] -> begin
             let jkind = Ctype.type_jkind env ty in
-            let sort = Jkind.sort_of_jkind jkind in
+            let sort = Jkind.sort_of_jkind env jkind in
             let ca_sort = Jkind.Sort.default_to_value_and_get sort in
             [{ cstr with Types.cd_args =
                            Cstr_tuple [{ arg with ca_sort }] }],
@@ -1928,7 +1928,7 @@ let rec update_decl_jkind env dpath decl =
           end
         | Cstr_record [{ld_type} as lbl] -> begin
             let jkind = Ctype.type_jkind env ld_type in
-            let sort = Jkind.sort_of_jkind jkind in
+            let sort = Jkind.sort_of_jkind env jkind in
             let ld_sort = Jkind.Sort.default_to_value_and_get sort in
             [{ cstr with Types.cd_args =
                            Cstr_record [{ lbl with ld_sort }] }],
@@ -2017,7 +2017,7 @@ let rec update_decl_jkind env dpath decl =
               let jkind = Ctype.type_jkind env ld_type in
               (* This next line is guaranteed to be OK because of a call to
                  [check_representable] *)
-              let sort = Jkind.sort_of_jkind jkind in
+              let sort = Jkind.sort_of_jkind env jkind in
               let ld_sort = Jkind.Sort.default_to_value_and_get sort in
               {lbl with ld_sort}
             ) lbls
@@ -2668,6 +2668,7 @@ let normalize_decl_jkinds env shapes decls =
       Jkind.normalize
         ~mode:Require_best
         ~jkind_of_type:(fun ty -> Some (Ctype.type_jkind env ty))
+        env
         decl.type_jkind
     in
     let decl =
@@ -3412,7 +3413,7 @@ let make_native_repr env core_type ty ~global_repr ~is_layout_poly ~why =
          transl)
     *)
     | Tvar {jkind} when is_layout_poly
-                      && Jkind.has_layout_any jkind
+                      && Jkind.has_layout_any env jkind
                       && get_level ty = Btype.generic_level -> Poly
     | _ ->
       let sort =
@@ -3561,14 +3562,14 @@ let check_unboxable env loc ty =
     all_unboxable_types
     ()
 
-let has_ty_var_with_layout_any ty =
-  Ctype.exists_free_variable (fun _ jkind -> Jkind.has_layout_any jkind) ty
+let has_ty_var_with_layout_any env ty =
+  Ctype.exists_free_variable (fun _ jkind -> Jkind.has_layout_any env jkind) ty
 
-let unexpected_layout_any_check prim cty ty =
+let unexpected_layout_any_check env prim cty ty =
   if Primitive.prim_can_contain_layout_any prim ||
      prim.prim_is_layout_poly then ()
   else
-  if has_ty_var_with_layout_any ty then
+  if has_ty_var_with_layout_any env ty then
     raise(Error (cty.ctyp_loc,
             Unexpected_layout_any_in_primitive(prim.prim_name)))
 
@@ -3632,9 +3633,9 @@ let unexpected_layout_any_check prim cty ty =
    product. So we rule out some things here, but others must be caught much
    later, in translprim.
 *)
-let error_if_containing_unexpected_jkind prim cty ty =
+let error_if_containing_unexpected_jkind env prim cty ty =
   Primitive.prim_has_valid_reprs ~loc:cty.ctyp_loc prim;
-  unexpected_layout_any_check prim cty ty
+  unexpected_layout_any_check env prim cty ty
 
 (* [@@@zero_alloc assert all] in signatures uses the apparent arity of each
    declaration just by looking at the number of arrows in the type.  If the type
@@ -3749,7 +3750,7 @@ let transl_value_decl env loc ~sig_modalities valdecl =
         Builtin_attributes.has_layout_poly valdecl.pval_attributes
       in
       if is_layout_poly &&
-         not (has_ty_var_with_layout_any ty) then
+         not (has_ty_var_with_layout_any env ty) then
         raise(Error(valdecl.pval_type.ptyp_loc, Useless_layout_poly));
       let native_repr_args, native_repr_res =
         parse_native_repr_attributes
@@ -3761,7 +3762,7 @@ let transl_value_decl env loc ~sig_modalities valdecl =
           ~native_repr_res
           ~is_layout_poly
       in
-      error_if_containing_unexpected_jkind prim cty ty;
+      error_if_containing_unexpected_jkind env prim cty ty;
       if prim.prim_arity = 0 &&
          (prim.prim_name = "" || prim.prim_name.[0] <> '%') then
         raise(Error(valdecl.pval_type.ptyp_loc, Null_arity_external));

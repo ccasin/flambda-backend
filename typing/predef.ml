@@ -221,6 +221,31 @@ let list_argument_sort = Jkind_types.Sort.Const.value
 let list_argument_jkind = Jkind_jkind.Builtin.value_or_null ~why:(
   Type_argument {parent_path = path_list; position = 1; arity = 1})
 
+let predef_jkinds =
+  [ ident_create "any", Jkind_const.Builtin.any.jkind
+  ; ident_create "any_non_null" , Jkind_const.Builtin.any_non_null.jkind
+  ; ident_create "value_or_null", Jkind_const.Builtin.value_or_null.jkind
+  ; ident_create "value", Jkind_const.Builtin.value.jkind
+  ; ident_create "void", Jkind_const.Builtin.void.jkind
+  ; ident_create "immediate64", Jkind_const.Builtin.immediate64.jkind
+  ; ident_create "immediate", Jkind_const.Builtin.immediate.jkind
+  ; ident_create "immediate_or_null", Jkind_const.Builtin.immediate_or_null.jkind
+  ; ident_create "float64", Jkind_const.Builtin.float64.jkind
+  ; ident_create "float32", Jkind_const.Builtin.float32.jkind
+  ; ident_create "word", Jkind_const.Builtin.word.jkind
+  ; ident_create "bits32", Jkind_const.Builtin.bits32.jkind
+  ; ident_create "bits64", Jkind_const.Builtin.bits64.jkind
+  ; ident_create "vec128", Jkind_const.Builtin.vec128.jkind
+  ; ident_create "immutable_data", Jkind_const.Builtin.immutable_data.jkind
+  ; ident_create "sync_data", Jkind_const.Builtin.sync_data.jkind
+  ; ident_create "mutable_data", Jkind_const.Builtin.mutable_data.jkind
+  ]
+
+let add_predef_jkinds add_jkind env =
+  List.fold_left
+    (fun env (id, jkind) -> add_jkind id jkind env) env
+    predef_jkinds
+
 let mk_add_type add_type =
   let add_type_with_jkind
       ?manifest type_ident
@@ -358,6 +383,18 @@ let mk_add_extension add_extension id args =
       ext_uid = Uid.of_predef_id id;
     }
 
+let mk_add_jkind add_jkind =
+  let add_jkind id jkind env =
+    let decl =
+      { jkind_manifest = Some jkind;
+        jkind_attributes = [];
+        jkind_uid = Uid.of_predef_id id;
+        jkind_loc = Location.none }
+    in
+    add_jkind id decl env
+  in
+  add_jkind
+
 let variant constrs =
   let mk_elt { cd_args } =
     let sorts = match cd_args with
@@ -381,10 +418,12 @@ let unrestricted tvar ca_sort =
 
 (* CR layouts: Changes will be needed here as we add support for the built-ins
    to work with non-values, and as we relax the mixed block restriction. *)
-let build_initial_env add_type add_extension empty_env =
+let build_initial_env add_type add_extension add_jkind empty_env =
   let add_type_with_jkind, add_type = mk_add_type add_type
   and add_type1 = mk_add_type1 add_type
-  and add_extension = mk_add_extension add_extension in
+  and add_extension = mk_add_extension add_extension
+  and add_jkind = mk_add_jkind add_jkind
+  in
   empty_env
   (* Predefined types *)
   |> add_type1 ident_array
@@ -517,6 +556,8 @@ let build_initial_env add_type add_extension empty_env =
   |> add_extension ident_undefined_recursive_module
        [newgenty (Ttuple[None, type_string; None, type_int; None, type_int]),
        Jkind_types.Sort.Const.value]
+  (* Predefined jkinds *)
+  |> add_predef_jkinds add_jkind
 
 let add_simd_stable_extension_types add_type env =
   let _, add_type = mk_add_type add_type in
@@ -545,7 +586,6 @@ let add_small_number_beta_extension_types add_type env =
   env
   |> add_type ident_int8 ~jkind:Jkind_const.Builtin.immediate
   |> add_type ident_int16 ~jkind:Jkind_const.Builtin.immediate
-
 
 let or_null_argument_sort = Jkind_types.Sort.Const.value
 

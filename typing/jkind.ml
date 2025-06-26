@@ -571,7 +571,7 @@ module Base = struct
     | Kconstr p -> Path.name p
 
   (* This is only correct on bases that come from the output of
-     [Base_and_axes.expand_to_checkable_bases]. See comment on that function. *)
+     [Jkind_desc.expand_to_checkable_bases]. See comment on that function. *)
   let sub_expanded base1 base2 =
     match base1, base2 with
     | Layout l1, Layout l2 -> Layout.sub l1 l2
@@ -582,7 +582,7 @@ module Base = struct
         "Jkind.Base.sub_expanded: [expand_to_checkable_bases] spec wrong"
 
   (* This is only correct on bases that come from the output of
-     [Base_and_axes.expand_to_checkable_bases]. See comment on that function. *)
+     [Jkind_desc.expand_to_checkable_bases]. See comment on that function. *)
   let intersection_expanded base1 base2 =
     match base1, base2 with
     | Layout l1, Layout l2 ->
@@ -609,6 +609,38 @@ module Base_and_axes = struct
     Format.fprintf ppf "{ base = %a;@ mod_bounds = %a;@ with_bounds = %a }"
       (Base.format format_layout)
       base Mod_bounds.debug_print mod_bounds With_bounds.debug_print with_bounds
+
+  (* This function does one step of expansion on the jkind base. It's the
+     identity if the input's base is a layout. Returns [None] if the kind can
+     not be expanded further (it is abstract, already a layout, or we are
+     missing the appropriate cmi).
+
+     It takes a parameter [layout_of_const] to deal with the fact that a looked
+     up jkind has a [Layout.Const.t], and sometimes we want to convert that to a
+     [Layout.t] but other times we'd like to leave it. *)
+  (* XXX this and other expansions really need to distinguish missing cmi (the
+     Not_found case) from others *)
+  let expand_base_once ~layout_of_const env t =
+    match t.base with
+    | Layout _ -> None
+    | Kconstr p -> (
+      match Env.find_jkind p env with
+      | exception Not_found -> None
+      | { jkind_manifest = None; _ } -> None
+      | { jkind_manifest = Some jkind; _ } ->
+        Some
+          { base = Base.map_layout layout_of_const jkind.base;
+            mod_bounds = Mod_bounds.meet t.mod_bounds jkind.mod_bounds;
+            with_bounds =
+              t.with_bounds
+              (* jkind is an lr kind and therefore has no with bounds. *)
+          })
+
+  (* XXX needs to signal missing cmi *)
+  let rec fully_expand_aliases ~layout_of_const env (t : (_, _) base_and_axes) =
+    match expand_base_once ~layout_of_const env t with
+    | None -> t
+    | Some t -> fully_expand_aliases ~layout_of_const env t
 
   type 'r normalize_mode =
     | Require_best : disallowed normalize_mode
@@ -640,18 +672,26 @@ module Base_and_axes = struct
      axes.
   *)
   let normalize (type layout l r1 r2) ~jkind_of_type ~(mode : r2 normalize_mode)
-      ~skip_axes
+      ~skip_axes ~layout_of_const env
       ?(map_type_info :
          (type_expr -> With_bounds_type_info.t -> With_bounds_type_info.t)
          option) (t : (layout, l * r1) base_and_axes) :
       (layout, l * r2) base_and_axes * Fuel_status.t =
-    (* handle a few common cases first, before doing anything else *)
     (* DEBUGGING
        Format.printf "@[normalize: %a@;  relevant_axes: %a@]@;"
          With_bounds.debug_print t.with_bounds Jkind_axis.Axis_set.print
          relevant_axes;
     *)
+    (* We currently don't attempt to normalize kinds with abstract bases. If we
+       do later implement that, note that we can't ignore axes for which their
+       mod_bounds say max, because the base might get filled in with a kind that
+       does cross on those axes. We fully expand before starting to avoid this
+       problem when possible, but expansion has its own costs so it's not
+       entirely obvious this is the right choice. *)
+    let t = fully_expand_aliases ~layout_of_const env t in
+    (* handle a few common cases first, before doing anything else *)
     match t with
+    | { base = Kconstr _; _ } -> Obj.magic t, Sufficient_fuel (* XXX *)
     | { with_bounds = No_with_bounds; _ } as t -> t, Sufficient_fuel
     | { with_bounds = With_bounds tys; _ } as t
       when Axis_set.equal skip_axes Axis_set.all
@@ -914,26 +954,6 @@ module Jkind_desc = struct
   let unsafely_set_bounds t ~from =
     { t with mod_bounds = from.mod_bounds; with_bounds = from.with_bounds }
 
-  (* This function does one step of expansion on the jkind base. It's the
-     identity if the input's base is a layout. Returns [None] if the kind can
-     not be expanded further (it is abstract, already a layout, or we are
-     missing the appropriate cmi). *)
-  let expand_base_once env t =
-    match t.base with
-    | Layout _ -> None
-    | Kconstr p -> (
-      match Env.find_jkind p env with
-      | exception Not_found -> None
-      | { jkind_manifest = None; _ } -> None
-      | { jkind_manifest = Some jkind; _ } ->
-        Some
-          { base = Base.map_layout Layout.of_const jkind.base;
-            mod_bounds = Mod_bounds.meet t.mod_bounds jkind.mod_bounds;
-            with_bounds =
-              t.with_bounds
-              (* jkind is an lr kind and therefore has no with bounds. *)
-          })
-
   (* See comment on [expand_to_checkable_bases] *)
   type allow_any_policy =
     | Always
@@ -972,6 +992,7 @@ module Jkind_desc = struct
        [sub_jkind_l] to normalize before calling this function.
   *)
   let rec expand_to_checkable_bases env ~allow_any t1 t2 =
+    let layout_of_const = Layout.of_const in
     match t1.base, t2.base with
     | Layout _, Layout _ -> Some (t1, t2)
     | Kconstr _, Layout Layout.Any -> (
@@ -982,21 +1003,19 @@ module Jkind_desc = struct
                (Mod_bounds.less_or_equal t1.mod_bounds t2.mod_bounds) ->
         Some (t1, t2)
       | Never | Check_bounds_for_sub -> (
-        match expand_base_once env t1 with
+        match Base_and_axes.expand_base_once ~layout_of_const env t1 with
         | None -> None
         | Some t1 -> expand_to_checkable_bases env ~allow_any t1 t2))
     | Kconstr p1, Kconstr p2 when Path.same p1 p2 -> Some (t1, t2)
     | Kconstr _, Layout _ | Layout _, Kconstr _ | Kconstr _, Kconstr _ -> (
-      match expand_base_once env t1, expand_base_once env t2 with
+      match
+        ( Base_and_axes.expand_base_once ~layout_of_const env t1,
+          Base_and_axes.expand_base_once ~layout_of_const env t2 )
+      with
       | None, None -> None
       | None, Some t2 -> expand_to_checkable_bases env ~allow_any t1 t2
       | Some t1, None -> expand_to_checkable_bases env ~allow_any t1 t2
       | Some t1, Some t2 -> expand_to_checkable_bases env ~allow_any t1 t2)
-
-  let rec fully_expand_aliases env (t : (_, _) base_and_axes) =
-    match expand_base_once env t with
-    | None -> t
-    | Some t -> fully_expand_aliases env t
 
   let equate_or_equal env ~allow_mutation t1 t2 =
     match expand_to_checkable_bases env ~allow_any:Never t1 t2 with
@@ -1042,7 +1061,7 @@ module Jkind_desc = struct
               (_ * allowed) jkind_desc),
             _ ) =
         Base_and_axes.normalize ~skip_axes:axes_max_on_right ~mode:Ignore_best
-          ~jkind_of_type desc_1
+          ~jkind_of_type ~layout_of_const:Layout.of_const env desc_1
       in
       let base = Base.sub_expanded base1 base2 in
       let bounds = Mod_bounds.less_or_equal bounds1 bounds2 in
@@ -1377,15 +1396,22 @@ module Const = struct
   (*******************************)
   (* converting user annotations *)
 
-  let jkind_of_product_annotations (type l r) (jkinds : (l * r) t list) =
+  let jkind_of_product_annotations (type l r) env (jkinds : (l * r) t list) =
     let folder (type l r) (layouts_acc, mod_bounds_acc, with_bounds_acc)
-        ({ base; mod_bounds; with_bounds } : (l * r) t) =
-      match base with
-      | Kconstr _ -> assert false (* XXX abstract kinds *)
-      | Layout layout ->
-        ( layout :: layouts_acc,
-          Mod_bounds.join mod_bounds mod_bounds_acc,
-          With_bounds.join with_bounds with_bounds_acc )
+        (kind : (l * r) t) =
+      let { base; mod_bounds; with_bounds } =
+        Base_and_axes.fully_expand_aliases
+          ~layout_of_const:(fun x -> x)
+          env kind
+      in
+      let layout =
+        (* The [Kconstr] case is a sad approximation - fix when we have
+           [layout_of] or product kinds *)
+        match base with Kconstr _ -> Layout.Const.Any | Layout l -> l
+      in
+      ( layout :: layouts_acc,
+        Mod_bounds.join mod_bounds mod_bounds_acc,
+        With_bounds.join with_bounds with_bounds_acc )
     in
     let layouts, mod_bounds, with_bounds =
       List.fold_left folder ([], Mod_bounds.min, No_with_bounds) jkinds
@@ -1441,7 +1467,7 @@ module Const = struct
       let jkinds =
         List.map (of_user_written_annotation_unchecked_level env context) ts
       in
-      jkind_of_product_annotations jkinds
+      jkind_of_product_annotations env jkinds
     | With (base, type_, modalities) -> (
       let base = of_user_written_annotation_unchecked_level env context base in
       match context with
@@ -1924,13 +1950,13 @@ type normalize_mode =
   | Require_best
   | Ignore_best
 
-let[@inline] normalize ~mode ~jkind_of_type t =
+let[@inline] normalize ~mode ~jkind_of_type env t =
   let mode : _ Base_and_axes.normalize_mode =
     match mode with Require_best -> Require_best | Ignore_best -> Ignore_best
   in
   let jkind, fuel_result =
     Base_and_axes.normalize ~jkind_of_type ~skip_axes:Axis_set.empty ~mode
-      t.jkind
+      ~layout_of_const:Layout.of_const env t.jkind
   in
   { t with
     jkind;
@@ -1974,7 +2000,7 @@ let get t = Jkind_desc.get t.jkind
 
 (* CR layouts: this function is suspect; it seems likely to reisenberg
    that refactoring could get rid of it *)
-let sort_of_jkind (t : jkind_l) : sort =
+let sort_of_jkind env (t : jkind_l) : sort =
   let rec sort_of_layout (t : _ Layout.t) =
     match t with
     | Any -> Misc.fatal_error "Jkind.sort_of_jkind"
@@ -1982,9 +2008,9 @@ let sort_of_jkind (t : jkind_l) : sort =
     | Product ls -> Sort.Product (List.map sort_of_layout ls)
   in
   let layout =
-    match t.jkind.base with
-    | Kconstr _ -> assert false (* XXX abstract kinds *)
-    | Layout l -> l
+    match extract_layout env t with
+    | Ok l -> l
+    | Error _ -> Misc.fatal_error "Jkind.sort_of_jkind"
   in
   sort_of_layout layout
 
@@ -1992,12 +2018,16 @@ let get_modal_bounds (type l r) ~jkind_of_type env (jk : (l * r) jkind) =
   (* It is sad that we must eagerly fully expand the kind here, which might
      involve loading a bunch of cmis. But our eager approach to mode crossing
      demands it. *)
-  let jk = Jkind_desc.fully_expand_aliases env jk.jkind in
+  let jk =
+    Base_and_axes.fully_expand_aliases ~layout_of_const:Layout.of_const env
+      jk.jkind
+  in
   let ( ({ base = _; mod_bounds; with_bounds = No_with_bounds } :
           (_ * allowed) jkind_desc),
         _ ) =
     Base_and_axes.normalize ~mode:Ignore_best
-      ~skip_axes:Axis_set.all_nonmodal_axes ~jkind_of_type jk
+      ~skip_axes:Axis_set.all_nonmodal_axes ~jkind_of_type
+      ~layout_of_const:Layout.of_const env jk
   in
   Mod_bounds.
     { comonadic =
@@ -2026,12 +2056,12 @@ let to_unsafe_mode_crossing jkind =
 let all_except_externality =
   Axis_set.singleton (Nonmodal Externality) |> Axis_set.complement
 
-let get_externality_upper_bound ~jkind_of_type jk =
+let get_externality_upper_bound ~jkind_of_type env jk =
   let ( ({ base = _; mod_bounds; with_bounds = No_with_bounds } :
           (_ * allowed) jkind_desc),
         _ ) =
     Base_and_axes.normalize ~mode:Ignore_best ~skip_axes:all_except_externality
-      ~jkind_of_type jk.jkind
+      ~jkind_of_type ~layout_of_const:Layout.of_const env jk.jkind
   in
   Mod_bounds.get mod_bounds ~axis:(Nonmodal Externality)
 
@@ -2047,7 +2077,7 @@ let set_externality_upper_bound jk externality_upper_bound =
 let all_except_nullability =
   Axis_set.singleton (Nonmodal Nullability) |> Axis_set.complement
 
-let get_nullability ~jkind_of_type jk =
+let get_nullability ~jkind_of_type env jk =
   (* Optimization: Usually, no with-bounds are relevant to nullability. If we check for
      this case, we can avoid calling normalize. *)
   let all_with_bounds_are_irrelevant =
@@ -2063,7 +2093,8 @@ let get_nullability ~jkind_of_type jk =
             (_ * allowed) jkind_desc),
           _ ) =
       Base_and_axes.normalize ~mode:Ignore_best ~jkind_of_type
-        ~skip_axes:all_except_nullability jk.jkind
+        ~skip_axes:all_except_nullability ~layout_of_const:Layout.of_const env
+        jk.jkind
     in
     Mod_bounds.get mod_bounds ~axis:(Nonmodal Nullability)
 
@@ -2117,29 +2148,27 @@ let apply_modality_r modality jk =
 
 let get_annotation jk = jk.annotation
 
-let decompose_product ({ jkind; _ } as jk) =
+let decompose_product env jk =
   let mk_jkind layout = set_layout jk layout in
   let deal_with_sort : Sort.t -> _ = function
     | Var _ -> None (* we've called [get] and there's *still* a variable *)
     | Base _ -> None
     | Product sorts -> Some (List.map (fun sort -> mk_jkind (Sort sort)) sorts)
   in
-  let layout =
-    match jkind.base with
-    | Kconstr _ -> assert false (* XXX abstract kinds *)
-    | Layout l -> l
-  in
-  match layout with
-  | Any -> None
-  | Product layouts ->
-    (* CR layouts v7.1: The histories here are wrong (we are giving each
-       component the history of the whole product).  They don't show up in
-       errors, so it's fine for now, but we'll probably need to fix this as
-       part of improving errors around products. A couple options: re-work the
-       relevant bits of [Ctype.type_jkind_sub] to just work on layouts, or
-       introduce product histories. *)
-    Some (List.map mk_jkind layouts)
-  | Sort s -> deal_with_sort (Sort.get s)
+  match extract_layout env jk with
+  | Error _ -> None
+  | Ok layout -> (
+    match layout with
+    | Any -> None
+    | Product layouts ->
+      (* CR layouts v7.1: The histories here are wrong (we are giving each
+         component the history of the whole product).  They don't show up in
+         errors, so it's fine for now, but we'll probably need to fix this as
+         part of improving errors around products. A couple options: re-work the
+         relevant bits of [Ctype.type_jkind_sub] to just work on layouts, or
+         introduce product histories. *)
+      Some (List.map mk_jkind layouts)
+    | Sort s -> deal_with_sort (Sort.get s))
 
 (*********************************)
 (* pretty printing *)
@@ -2561,15 +2590,18 @@ module Violation = struct
       match violation with
       | Not_a_subjkind (env, jkind1, jkind2, reasons) ->
         let jkind1 =
-          normalize ~mode:Require_best ~jkind_of_type (disallow_right jkind1)
+          normalize ~mode:Require_best ~jkind_of_type env
+            (disallow_right jkind1)
         in
         let jkind2 =
-          normalize ~mode:Require_best ~jkind_of_type (disallow_right jkind2)
+          normalize ~mode:Require_best ~jkind_of_type env
+            (disallow_right jkind2)
         in
         Not_a_subjkind (env, jkind1, jkind2, reasons)
       | No_intersection (env, jkind1, jkind2) ->
         let jkind1 =
-          normalize ~mode:Require_best ~jkind_of_type (disallow_right jkind1)
+          normalize ~mode:Require_best ~jkind_of_type env
+            (disallow_right jkind1)
         in
         (* jkind2 can't have with-bounds, by its type *)
         No_intersection (env, jkind1, jkind2)
@@ -2875,7 +2907,9 @@ let has_intersection env t1 t2 =
 
 let intersection_or_error ~type_equal ~jkind_of_type ~reason env t1 t2 =
   match Jkind_desc.intersection env t1.jkind t2.jkind with
-  | None -> Error (Violation.of_ ~jkind_of_type (No_intersection (env, t1, t2)))
+  | None ->
+    Error
+      (Violation.of_ ~jkind_of_type (Violation.No_intersection (env, t1, t2)))
   | Some jkind ->
     Ok
       { jkind;
@@ -2891,10 +2925,10 @@ let intersection_or_error ~type_equal ~jkind_of_type ~reason env t1 t2 =
           Not_best (* As required by the fact that this is a [jkind_r] *)
       }
 
-let round_up (type l r) ~jkind_of_type (t : (allowed * r) jkind) :
+let round_up (type l r) ~jkind_of_type env (t : (allowed * r) jkind) :
     (l * allowed) jkind =
   let normalized =
-    normalize ~mode:Ignore_best ~jkind_of_type (t |> disallow_right)
+    normalize ~mode:Ignore_best ~jkind_of_type env (t |> disallow_right)
   in
   { t with
     jkind = { normalized.jkind with with_bounds = No_with_bounds };
@@ -2930,7 +2964,7 @@ let sub_or_error ~type_equal ~jkind_of_type env t1 t2 =
   | Disjoint reason | Has_intersection reason ->
     Error
       (Violation.of_ ~jkind_of_type
-         (Not_a_subjkind (env, t1, t2, Nonempty_list.to_list reason)))
+         (Violation.Not_a_subjkind (env, t1, t2, Nonempty_list.to_list reason)))
 
 let sub_layout_or_error ~jkind_of_type env t1 t2 =
   match Jkind_desc.sub_layout env t1.jkind t2.jkind with
@@ -2938,7 +2972,7 @@ let sub_layout_or_error ~jkind_of_type env t1 t2 =
   | Not_le reason ->
     Error
       (Violation.of_ ~jkind_of_type
-         (Not_a_subjkind (env, t1, t2, Nonempty_list.to_list reason)))
+         (Violation.Not_a_subjkind (env, t1, t2, Nonempty_list.to_list reason)))
 
 let sub_jkind_l ~type_equal ~jkind_of_type ?(allow_any_crossing = false) env sub
     super =
@@ -2952,9 +2986,10 @@ let sub_jkind_l ~type_equal ~jkind_of_type ?(allow_any_crossing = false) env sub
        the inferred one, since the inferred one is probably overly complex. *)
     (* CR layouts v2.8: It would be useful report to the user why this violation
        occurred, specifically which axes the violation is along. *)
-    let best_sub = normalize ~mode:Require_best ~jkind_of_type sub in
+    let best_sub = normalize ~mode:Require_best ~jkind_of_type env sub in
     Violation.of_ ~jkind_of_type
-      (Not_a_subjkind (env, best_sub, super, Nonempty_list.to_list reasons))
+      (Violation.Not_a_subjkind
+         (env, best_sub, super, Nonempty_list.to_list reasons))
   in
   let require_le sub_result =
     Sub_result.require_le sub_result |> Result.map_error normalize_error
@@ -2965,7 +3000,7 @@ let sub_jkind_l ~type_equal ~jkind_of_type ?(allow_any_crossing = false) env sub
       (* Per comment on [expand_to_checkable_bases], we must normalize
          eagerly if the right kind has layout [any]. *)
       match super.jkind.base with
-      | Layout Any -> normalize ~mode:Require_best ~jkind_of_type super
+      | Layout Any -> normalize ~mode:Require_best ~jkind_of_type env super
       | Layout _ | Kconstr _ -> super
     in
     match
@@ -2984,7 +3019,7 @@ let sub_jkind_l ~type_equal ~jkind_of_type ?(allow_any_crossing = false) env sub
   | false ->
     let best_super =
       (* MB_EXPAND_R *)
-      normalize ~mode:Require_best ~jkind_of_type super
+      normalize ~mode:Require_best ~jkind_of_type env super
     in
     let right_bounds =
       With_bounds.to_best_eff_map best_super.jkind.with_bounds
@@ -3020,8 +3055,8 @@ let sub_jkind_l ~type_equal ~jkind_of_type ?(allow_any_crossing = false) env sub
       (* [Jkind_desc.map_normalize] handles the stepping, jkind lookups, and
          joining.  [map_type_info] handles looking for [ty] on the right and
          removing irrelevant axes. *)
-      Base_and_axes.normalize sub.jkind ~skip_axes:axes_max_on_right
-        ~jkind_of_type ~mode:Ignore_best
+      Base_and_axes.normalize env sub.jkind ~skip_axes:axes_max_on_right
+        ~jkind_of_type ~mode:Ignore_best ~layout_of_const:Layout.of_const
         ~map_type_info:(fun ty { relevant_axes = left_relevant_axes } ->
           let right_relevant_axes =
             (* Look for [ty] on the right. There may be multiple occurrences of
@@ -3066,11 +3101,11 @@ let is_obviously_max = function
     } ->
     false
 
-let has_layout_any jkind =
-  match jkind.jkind.base with
-  | Kconstr _ -> assert false (* XXX abstract kinds *)
-  | Layout Any -> true
-  | Layout _ -> false
+let has_layout_any env jkind =
+  match extract_layout env jkind with
+  | Ok Any -> true
+  | Ok _ -> false
+  | Error _ -> false
 
 let is_value_for_printing ~ignore_null { jkind; _ } =
   match Desc.get_const (Jkind_desc.get jkind) with

@@ -13,6 +13,7 @@ Line 2, characters 11-15:
 2 | type ('a : valu) t0 = 'a list;;
                ^^^^
 Error: Unbound jkind "valu"
+Hint: Did you mean "value"?
 type t = float#
 Line 2, characters 9-13:
 2 | type t = int#;;

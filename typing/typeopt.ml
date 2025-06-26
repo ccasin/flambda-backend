@@ -350,7 +350,9 @@ let value_kind_of_value_jkind env jkind =
   (* In other places, we use [Ctype.type_jkind_purely_if_principal]. Here, we omit
      the principality check, as we're just trying to compute optimizations. *)
   let jkind_of_type ty = Some (Ctype.type_jkind_purely env ty) in
-  let externality_upper_bound = Jkind.get_externality_upper_bound ~jkind_of_type jkind in
+  let externality_upper_bound =
+    Jkind.get_externality_upper_bound ~jkind_of_type env jkind
+  in
   match layout, externality_upper_bound with
   | Some (Base Value), External -> Pintval
   | Some (Base Value), External64 ->
@@ -441,7 +443,7 @@ let nullable raw_kind = { raw_kind; nullable = Nullable }
 let add_nullability_from_jkind env jkind raw_kind =
   let jkind_of_type ty = Some (Ctype.type_jkind_purely env ty) in
   let nullable =
-    match Jkind.get_nullability ~jkind_of_type jkind with
+    match Jkind.get_nullability ~jkind_of_type env jkind with
     | Non_null -> Non_nullable
     | Maybe_null -> Nullable
   in

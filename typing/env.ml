@@ -3037,6 +3037,7 @@ let initial =
   Predef.build_initial_env
     (add_type ~check:false)
     (add_extension ~check:false ~rebind:false)
+    (add_jkind ~check:false)
     empty
 
 let add_language_extension_types env =

@@ -47,8 +47,8 @@ module M' : S = M
 
 [%%expect{|
 kind_ k = immutable_data
-module type S = sig kind_ k = float64 type t : k end
-module M : sig kind_ k = float64 type t : k end
+module type S = sig kind_ k = float64 type t : float64 end
+module M : sig kind_ k = float64 type t : float64 end
 module M' : S
 |}]
 
@@ -168,7 +168,7 @@ let require_portable (_x : t @ portable) = ()
 let cross_portable : t -> unit = fun x -> require_portable x
 [%%expect{|
 kind_ k = value mod portable & value mod portable
-type t : k
+type t : value mod portable & value mod portable
 type s1 = t
 type s2 = t
 type s3 = t
@@ -182,7 +182,7 @@ type s5 : value & value mod global = t
 Line 1, characters 0-38:
 1 | type s5 : value & value mod global = t
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Error: The kind of type "t" is k
+Error: The kind of type "t" is value mod portable & value mod portable
          because of the definition of t at line 3, characters 0-10.
        But the kind of type "t" must be a subkind of
          value mod global & value mod global
@@ -225,7 +225,7 @@ module A : sig kind_ ka = float64 end
 module B : sig kind_ kb = A.ka mod portable end
 module C : sig kind_ kc = B.kb end
 module D : sig kind_ kd = C.kc mod global end
-type t : D.kd
+type t : float64 mod global portable
 type s1 = t
 type s2 = t
 |}]
@@ -235,7 +235,7 @@ type s3 : any mod contended = t
 Line 1, characters 0-31:
 1 | type s3 : any mod contended = t
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Error: The kind of type "t" is D.kd
+Error: The kind of type "t" is float64 mod global portable
          because of the definition of t at line 17, characters 0-13.
        But the kind of type "t" must be a subkind of any mod contended
          because of the definition of s3 at line 1, characters 0-31.
@@ -456,7 +456,7 @@ module F(X : S) = struct
   type s : X.M.k = t
 end
 [%%expect{|
-module F : functor (X : S) -> sig type t : X.Q.k type s = t end
+module F : functor (X : S) -> sig type t : X.M.k type s = t end
 |}]
 
 (* N.k is not *)

@@ -231,6 +231,7 @@ val prim_mode :
         (Mode.allowed * 'r) Mode.Locality.t option -> (Primitive.mode * Primitive.native_repr)
         -> (Mode.allowed * 'r) Mode.Locality.t
 val instance_prim:
+        Env.t ->
         Primitive.description -> type_expr ->
         type_expr * Mode.Locality.lr option
         * Mode.Yielding.lr option * Jkind.Sort.t option

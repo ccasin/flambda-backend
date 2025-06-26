@@ -487,7 +487,7 @@ let msig_of_external_type env decl =
   in
   let jkind_of_type = Ctype.type_jkind_purely_if_principal env in
   let is_external =
-    match Jkind.get_externality_upper_bound ~jkind_of_type decl.type_jkind with
+    match Jkind.get_externality_upper_bound ~jkind_of_type env decl.type_jkind with
     | Internal -> false
     | External | External64 -> true
   in

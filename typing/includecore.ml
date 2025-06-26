@@ -150,8 +150,10 @@ let value_descriptions ~loc env name
          let yielding = [ Mode.Yielding.unyielding; Mode.Yielding.yielding ] in
          List.iter (fun loc ->
            List.iter (fun yield ->
-             let ty1, _, _, _ = Ctype.instance_prim p1 vd1.val_type in
-             let ty2, mode_l2, mode_y2, _ = Ctype.instance_prim p2 vd2.val_type in
+             let ty1, _, _, _ = Ctype.instance_prim env p1 vd1.val_type in
+             let ty2, mode_l2, mode_y2, _ =
+               Ctype.instance_prim env p2 vd2.val_type
+             in
              Option.iter (Mode.Locality.equate_exn loc) mode_l2;
              Option.iter (Mode.Yielding.equate_exn yield) mode_y2;
              try
@@ -165,7 +167,7 @@ let value_descriptions ~loc env name
          | Some err -> raise (Dont_match (Primitive_mismatch err))
        end
      | _ ->
-        let ty1, mode_l1, _, sort1 = Ctype.instance_prim p1 vd1.val_type in
+        let ty1, mode_l1, _, sort1 = Ctype.instance_prim env p1 vd1.val_type in
         (try Ctype.moregeneral env true ty1 vd2.val_type
          with Ctype.Moregen err -> raise (Dont_match (Type err)));
         let pc =

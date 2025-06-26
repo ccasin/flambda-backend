@@ -591,7 +591,7 @@ val is_void_defaulting : 'd Types.jkind -> bool
 
 (** Returns the sort corresponding to the jkind.  Call only on representable
     jkinds - raises on Any. *)
-val sort_of_jkind : Types.jkind_l -> sort
+val sort_of_jkind : Env.t -> Types.jkind_l -> sort
 
 (** Gets the layout of a jkind; returns [None] if the layout is still unknown.
     Never does mutation. *)
@@ -614,6 +614,7 @@ val to_unsafe_mode_crossing : Types.jkind_l -> Types.unsafe_mode_crossing
 
 val get_externality_upper_bound :
   jkind_of_type:(Types.type_expr -> Types.jkind_l option) ->
+  Env.t ->
   'd Types.jkind ->
   Jkind_axis.Externality.t
 
@@ -625,6 +626,7 @@ val set_externality_upper_bound :
 (** Gets the nullability from a jkind. *)
 val get_nullability :
   jkind_of_type:(Types.type_expr -> Types.jkind_l option) ->
+  Env.t ->
   'd Types.jkind ->
   Jkind_axis.Nullability.t
 
@@ -660,7 +662,7 @@ val apply_modality_r :
     Because it just reuses the mode information, the resulting jkinds are higher
     in the jkind lattice than they might need to be.
     *)
-val decompose_product : 'd Types.jkind -> 'd Types.jkind list option
+val decompose_product : Env.t -> 'd Types.jkind -> 'd Types.jkind list option
 
 (** Get an annotation (that a user might write) for this [t]. *)
 val get_annotation : 'd Types.jkind -> Parsetree.jkind_annotation option
@@ -680,6 +682,7 @@ type normalize_mode =
 val normalize :
   mode:normalize_mode ->
   jkind_of_type:(Types.type_expr -> Types.jkind_l option) ->
+  Env.t ->
   Types.jkind_l ->
   Types.jkind_l
 
@@ -820,6 +823,7 @@ val sub_jkind_l :
     output. *)
 val round_up :
   jkind_of_type:(Types.type_expr -> Types.jkind_l option) ->
+  Env.t ->
   (allowed * 'r) Types.jkind ->
   ('l * allowed) Types.jkind
 
@@ -836,7 +840,7 @@ val map_type_expr :
 val is_obviously_max : ('l * allowed) Types.jkind -> bool
 
 (** Checks to see whether a jkind has layout any. Never does any mutation. *)
-val has_layout_any : ('l * allowed) Types.jkind -> bool
+val has_layout_any : Env.t -> ('l * allowed) Types.jkind -> bool
 
 (** Checks whether a jkind is [value]. This really should require a [jkind_lr],
     but it works on any [jkind], because it's used in printing and is somewhat
